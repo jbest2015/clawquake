@@ -20,8 +20,9 @@ import q3huff2
 from .defs import (
     connstate_t, svc_ops_e, clc_ops_e, configstr_t,
     CONNECTIONLESS_MARKER, FRAGMENT_BIT, MAX_RELIABLE_COMMANDS,
-    MAX_CONFIGSTRINGS,
+    MAX_CONFIGSTRINGS, PACKET_BACKUP, PACKET_MASK,
 )
+from .buffers import BufferOverflow
 from .buffers import Buffer
 from .protocol import parse_connectionless, parse_server_frame, ServerFrame
 from .snapshot import Snapshot, PlayerState, EntityState
@@ -98,13 +99,17 @@ class Q3Client:
         # Game state
         self.config_strings = {}
         self.baselines = {}
-        self.snapshots = {}         # message_num -> Snapshot (recent)
+        self.snapshots = {}         # (sequence & PACKET_MASK) -> Snapshot (circular buffer)
         self.current_snapshot = None
         self.server_time = 0
 
         # WebSocket
         self._ws = None
         self._running = False
+
+        # Fragment reassembly
+        self._frag_sequence = 0
+        self._frag_buffer = bytearray()
 
         # Callbacks
         self.on_snapshot = None     # async fn(client, snapshot)
@@ -147,13 +152,14 @@ class Q3Client:
 
         while self._running:
             try:
-                # Receive all pending packets (non-blocking)
-                try:
-                    data = await asyncio.wait_for(self._ws.recv(), timeout=frame_time)
-                    if isinstance(data, bytes):
-                        await self._handle_packet(data)
-                except asyncio.TimeoutError:
-                    pass
+                # Drain all pending packets from the server
+                while True:
+                    try:
+                        data = await asyncio.wait_for(self._ws.recv(), timeout=frame_time)
+                        if isinstance(data, bytes):
+                            await self._handle_packet(data)
+                    except asyncio.TimeoutError:
+                        break  # No more pending data, send our frame
 
                 # Send client frame if connected
                 if self.state.value >= connstate_t.CA_CONNECTED.value:
@@ -201,14 +207,15 @@ class Q3Client:
         if len(data) < 4:
             return
 
-        sequence = struct.unpack_from('<i', data, 0)[0]
+        # Read as unsigned to handle fragment bit correctly
+        raw_seq = struct.unpack_from('<I', data, 0)[0]
 
-        if sequence == -1:
+        if raw_seq == 0xFFFFFFFF:
             # Connectionless packet
             await self._handle_connectionless(data)
         else:
             # Connected packet
-            await self._handle_connected(sequence, data)
+            await self._handle_connected(raw_seq, data)
 
     async def _handle_connectionless(self, data):
         """Handle OOB (out-of-band) connectionless packet."""
@@ -236,48 +243,64 @@ class Q3Client:
             if self.on_disconnected:
                 await self.on_disconnected(self, args)
 
-    async def _handle_connected(self, sequence, data):
-        """Handle a connected (in-game) packet."""
+    async def _handle_connected(self, raw_seq, data):
+        """Handle a connected (in-game) packet.
+
+        Protocol 71 server packet format:
+          4 bytes: sequence (LE uint32, bit 31 = fragment flag)
+          4 bytes: checksum (LE uint32)
+          N bytes: Huffman-coded payload (or fragment header + data if fragmented)
+
+        raw_seq is already unsigned from _handle_packet.
+        """
         if not self.state.value >= connstate_t.CA_CONNECTED.value:
             return
 
-        # Strip fragment bit
-        is_fragmented = bool(sequence & FRAGMENT_BIT)
-        sequence = sequence & ~FRAGMENT_BIT
+        # Strip fragment bit (bit 31)
+        is_fragmented = bool(raw_seq & FRAGMENT_BIT)
+        real_sequence = raw_seq & 0x7FFFFFFF
 
-        if sequence <= self.message_seq:
+        if real_sequence <= self.message_seq:
             return  # Old/duplicate packet
 
-        if is_fragmented:
-            # TODO: implement defragmentation for large packets
-            logger.debug("Fragmented packet - skipping")
-            return
-
-        # Parse the Huffman-coded payload (skip 4-byte sequence header)
-        buf = Buffer(data[4:])
-
-        # For protocol 68, we need to decrypt
-        if self.protocol_version == 68:
-            reliable_ack_peek = buf.read_long()
-            # XOR decrypt
-            cmd = self.reliable_commands[reliable_ack_peek % 64]
-            key = (self.challenge ^ sequence) & 0xFF
-            buf_data = Buffer(data[4:])
-            buf_data.xor_data(4, key, cmd + '\x00')  # 4 bytes after reliable_ack (Huffman start)
-            buf = buf_data
+        # For protocol 71, skip the 4-byte checksum after the sequence header
+        if self.protocol_version == 71:
+            payload = data[8:]  # skip 4-byte seq + 4-byte checksum
         else:
-            # Protocol 71 - no encryption, already plaintext after checksum
-            pass
+            payload = data[4:]  # skip 4-byte seq only
 
-        # Parse the server frame
-        try:
-            frame = parse_server_frame(buf, self.baselines, self.snapshots, self.server_commands)
-        except Exception as e:
-            logger.error(f"Failed to parse server frame: {e}", exc_info=True)
+        # Handle fragmented packets
+        if is_fragmented:
+            await self._handle_fragment(real_sequence, payload)
             return
 
-        # Update state
-        self.message_seq = sequence
+        # Parse the Huffman-coded payload
+        if len(payload) < 4:
+            # Too small to contain even a reliable_ack
+            self.message_seq = real_sequence
+            return
+
+        buf = Buffer(payload)
+
+        try:
+            frame = parse_server_frame(
+                buf, self.baselines, self.snapshots, self.server_commands,
+                current_sequence=real_sequence,
+            )
+        except BufferOverflow as e:
+            logger.warning(f"Buffer overflow parsing frame seq={real_sequence}: {e}")
+            self.message_seq = real_sequence
+            return
+        except Exception as e:
+            logger.error(f"Failed to parse server frame seq={real_sequence}: {e}")
+            self.message_seq = real_sequence
+            return
+
+        self.message_seq = real_sequence
+        await self._process_frame(frame)
+
+    async def _process_frame(self, frame):
+        """Process a parsed server frame: update state, handle events, fire callbacks."""
         self.reliable_ack = frame.reliable_ack
 
         # Handle gamestate (initial connect)
@@ -297,24 +320,77 @@ class Q3Client:
         if frame.snapshot:
             self.current_snapshot = frame.snapshot
             self.server_time = frame.snapshot.server_time
-            self.snapshots[self.message_seq] = frame.snapshot
 
-            # Keep only recent snapshots
-            old_keys = [k for k in self.snapshots if k < self.message_seq - 32]
-            for k in old_keys:
-                del self.snapshots[k]
+            # Store in circular buffer indexed by (sequence & PACKET_MASK)
+            snap_key = self.message_seq & PACKET_MASK
+            self.snapshots[snap_key] = frame.snapshot
 
             if self.on_snapshot:
                 await self.on_snapshot(self, frame.snapshot)
 
         # Transition to active state
-        if self.state == connstate_t.CA_CONNECTED:
+        # CA_CONNECTED -> CA_PRIMED: after receiving gamestate
+        if self.state == connstate_t.CA_CONNECTED and frame.config_strings and frame.client_num >= 0:
             self.state = connstate_t.CA_PRIMED
+            logger.info(f"Gamestate received, primed (client_num={self.client_num})")
+        # CA_PRIMED -> CA_ACTIVE: after receiving first snapshot post-gamestate
         if self.state == connstate_t.CA_PRIMED and frame.snapshot:
             self.state = connstate_t.CA_ACTIVE
             logger.info("Game state active - in game!")
             if self.on_connected:
                 await self.on_connected(self)
+
+    async def _handle_fragment(self, sequence, payload):
+        """Reassemble a fragmented packet.
+
+        Fragment format (after sequence + checksum):
+          2 bytes: fragment_start (offset into reassembled packet)
+          2 bytes: fragment_length (bytes in this fragment)
+          N bytes: fragment data
+
+        When fragment_length < 1300, it's the last fragment. Reassemble and parse.
+        """
+        FRAGMENT_SIZE = 1300
+
+        if sequence != self._frag_sequence:
+            # New fragmented packet, reset buffer
+            self._frag_sequence = sequence
+            self._frag_buffer = bytearray()
+
+        # Read fragment header using q3huff2.Reader (OOB-like, no Huffman)
+        reader = q3huff2.Reader(bytes(payload))
+        reader.oob = True  # fragment headers are not Huffman-coded
+        frag_start = reader.read_short()
+        frag_length = reader.read_short()
+        frag_data = reader.read_data(frag_length)
+
+        if len(self._frag_buffer) != frag_start:
+            logger.warning(f"Fragment gap: expected offset {len(self._frag_buffer)}, got {frag_start}")
+            self._frag_buffer = bytearray()
+            return
+
+        self._frag_buffer.extend(frag_data if isinstance(frag_data, (bytes, bytearray)) else frag_data.encode())
+
+        if frag_length < FRAGMENT_SIZE:
+            # Last fragment — process the reassembled packet
+            logger.debug(f"Fragment reassembled: seq={sequence} total={len(self._frag_buffer)} bytes")
+            buf = Buffer(bytes(self._frag_buffer))
+            self._frag_buffer = bytearray()
+
+            try:
+                frame = parse_server_frame(
+                    buf, self.baselines, self.snapshots, self.server_commands,
+                    current_sequence=sequence,
+                )
+            except BufferOverflow as e:
+                logger.warning(f"Buffer overflow parsing reassembled frame: {e}")
+                return
+            except Exception as e:
+                logger.error(f"Failed to parse reassembled frame: {e}", exc_info=True)
+                return
+
+            self.message_seq = sequence
+            await self._process_frame(frame)
 
     def _load_gamestate(self, frame):
         """Load full gamestate from a gamestate frame."""
@@ -418,7 +494,14 @@ class Q3Client:
         await self._ws.send(packet)
 
     def _build_client_frame(self):
-        """Build a client frame packet to send to the server."""
+        """Build a client frame packet to send to the server.
+
+        Protocol 71 frame format:
+          4 bytes: sequence number (LE int32)
+          2 bytes: qport (LE uint16)
+          4 bytes: checksum = challenge ^ (sequence * challenge) (LE uint32)
+          N bytes: Huffman-encoded payload (serverid, acks, commands, usermove, EOF)
+        """
         if self.state.value < connstate_t.CA_CONNECTED.value:
             return None
 
@@ -432,34 +515,37 @@ class Q3Client:
         # Send pending reliable commands
         for i in range(self.reliable_ack + 1, self.reliable_seq + 1):
             inx = i % 64
-            writer.write_byte(clc_ops_e.clc_clientCommand)
+            writer.write_byte(clc_ops_e.clc_clientCommand.value)
             writer.write_long(i)
             writer.write_string(self.reliable_commands[inx])
 
         # Send usermove (minimal - just keepalive)
-        writer.write_byte(clc_ops_e.clc_moveNoDelta)
+        writer.write_byte(clc_ops_e.clc_moveNoDelta.value)
         writer.write_byte(1)  # command count
 
         if self.server_time == 0:
-            writer.write_raw_bits(1, 1)   # time delta bit
-            writer.write_raw_bits(1, 8)   # delta value
+            writer.write_bits(1, 1)   # time delta bit
+            writer.write_bits(1, 8)   # delta value
         else:
-            writer.write_raw_bits(0, 1)   # no time delta
+            writer.write_bits(0, 1)   # no time delta bit
             writer.write_long(self.server_time + 100)
 
-        writer.write_raw_bits(0, 1)  # no movement changes
+        writer.write_bits(0, 1)  # no movement changes
 
-        writer.write_byte(clc_ops_e.clc_EOF)
+        writer.write_byte(clc_ops_e.clc_EOF.value)
 
-        # Build final packet: sequence + qport + huffman payload
-        packet = bytearray(
-            struct.pack('<i', self.outgoing_seq)
-            + struct.pack('<H', self.qport)
-            + writer.data
-        )
+        # Build final packet header
+        seq_bytes = struct.pack('<i', self.outgoing_seq)
+        qport_bytes = struct.pack('<H', self.qport)
 
-        # For protocol 68, encrypt the payload
-        if self.protocol_version == 68:
+        if self.protocol_version == 71:
+            # Protocol 71: add checksum between qport and payload
+            checksum = (self.challenge ^ (self.outgoing_seq * self.challenge)) & 0xFFFFFFFF
+            checksum_bytes = struct.pack('<I', checksum)
+            packet = bytearray(seq_bytes + qport_bytes + checksum_bytes + writer.encoded_data)
+        else:
+            # Protocol 68: no checksum, but encrypt payload
+            packet = bytearray(seq_bytes + qport_bytes + writer.encoded_data)
             cmd = self.server_commands[self.command_seq % 64]
             key = (self.challenge ^ self.message_seq ^ self.server_id) & 0xFF
             self._encrypt_packet(packet, key, cmd + '\x00')

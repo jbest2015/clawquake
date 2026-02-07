@@ -3,12 +3,18 @@ Quake 3 snapshot parser - reads delta-compressed game state from server frames.
 
 Parses player states (your own state) and entity states (other players, items,
 projectiles, etc.) from Q3 server snapshot packets.
+
+Based on the quake3-proxy-aimbot reference implementation by jfedor2.
 """
+
+import logging
 
 from .defs import (
     PLAYERSTATE_FIELDS, ENTITY_FIELDS, FLOAT_INT_BITS, FLOAT_INT_BIAS,
     GENTITYNUM_BITS, MAX_GENTITIES, svc_ops_e, entityType_t,
 )
+
+logger = logging.getLogger('clawquake.snapshot')
 
 
 class PlayerState:
@@ -44,7 +50,6 @@ class PlayerState:
 
     @property
     def health(self):
-        # Health is in stats, but also derivable from events
         return self.fields.get('generic1', 0)
 
     @property
@@ -55,9 +60,19 @@ class PlayerState:
     def client_num(self):
         return self.fields.get('clientNum', 0)
 
+    # Stats arrays (populated from arrays section)
+    stats = None
+    persistant = None
+    ammo = None
+    powerups = None
+
     def copy(self):
         ps = PlayerState()
         ps.fields = dict(self.fields)
+        ps.stats = list(self.stats) if self.stats else None
+        ps.persistant = list(self.persistant) if self.persistant else None
+        ps.ammo = list(self.ammo) if self.ammo else None
+        ps.powerups = list(self.powerups) if self.powerups else None
         return ps
 
 
@@ -67,8 +82,6 @@ class EntityState:
     def __init__(self, number=0):
         self.number = number
         self.fields = {}
-        for field in ENTITY_FIELDS:
-            self.fields[field.name] = 0
 
     @property
     def origin(self):
@@ -113,12 +126,31 @@ class Snapshot:
 
 
 def read_delta_playerstate(buf, old_ps):
-    """Read a delta-compressed player state from the buffer."""
-    ps = old_ps.copy() if old_ps else PlayerState()
+    """Read a delta-compressed player state from the buffer.
 
-    # Read field mask
+    Format (per quake3-proxy-aimbot reference):
+      field_count: 8 bits
+      For each field (0..field_count-1):
+        field_changed: 1 bit
+        If changed:
+          If float field (bits==0):
+            int_or_float: 1 bit
+              0: read_int_float (13 bits with bias)
+              1: read_float (32 bits IEEE)
+          Else integer field:
+            read_bits(field.bits)
+      arrays_changed: 1 bit
+      If arrays changed:
+        stats, persistant, ammo, powerups arrays
+    """
+    ps = old_ps.copy() if old_ps else PlayerState()
     field_count = len(PLAYERSTATE_FIELDS)
+
     last_field = buf.read_byte()
+
+    if last_field > field_count:
+        logger.warning(f"Playerstate field_count={last_field} > max={field_count}, clamping")
+        last_field = field_count
 
     for i in range(last_field):
         if not buf.read_bit():
@@ -127,37 +159,95 @@ def read_delta_playerstate(buf, old_ps):
         field = PLAYERSTATE_FIELDS[i]
 
         if field.bits == 0:
-            # Float field - could be int-encoded or full float
+            # Float field
             if buf.read_bit():
-                # Full float
+                # Full IEEE float
                 ps.fields[field.name] = buf.read_float()
             else:
-                # Int-encoded float
+                # Int-encoded float (13 bits with bias)
                 ps.fields[field.name] = buf.read_int_float()
         else:
             # Integer field
-            ps.fields[field.name] = buf.read_bits(field.bits)
+            bits = abs(field.bits)
+            ps.fields[field.name] = buf.read_bits(bits)
+
+    # Read arrays section
+    if buf.read_bit():  # arrays_changed
+        # Stats array (16 entries, each 16 bits)
+        if buf.read_bit():  # stats_changed
+            bits = buf.read_bits(16)
+            if ps.stats is None:
+                ps.stats = [0] * 16
+            for i in range(16):
+                if bits & (1 << i):
+                    ps.stats[i] = buf.read_bits(16)
+
+        # Persistant array (16 entries, each 16 bits)
+        if buf.read_bit():  # persistant_changed
+            bits = buf.read_bits(16)
+            if ps.persistant is None:
+                ps.persistant = [0] * 16
+            for i in range(16):
+                if bits & (1 << i):
+                    ps.persistant[i] = buf.read_bits(16)
+
+        # Ammo array (16 entries, each 16 bits)
+        if buf.read_bit():  # ammo_changed
+            bits = buf.read_bits(16)
+            if ps.ammo is None:
+                ps.ammo = [0] * 16
+            for i in range(16):
+                if bits & (1 << i):
+                    ps.ammo[i] = buf.read_bits(16)
+
+        # Powerups array (16 entries, each 32 bits)
+        if buf.read_bit():  # powerups_changed
+            bits = buf.read_bits(16)
+            if ps.powerups is None:
+                ps.powerups = [0] * 16
+            for i in range(16):
+                if bits & (1 << i):
+                    ps.powerups[i] = buf.read_bits(32)
 
     return ps
 
 
 def read_delta_entity(buf, old_es, number, key=None):
-    """Read a delta-compressed entity state from the buffer."""
+    """Read a delta-compressed entity state from the buffer.
+
+    Format (per quake3-proxy-aimbot reference):
+      entity_changed: 1 bit (called after remove check in caller)
+      If changed:
+        field_count: 8 bits
+        For each field (0..field_count-1):
+          field_changed: 1 bit
+          If changed:
+            If float field (bits==0):
+              float_is_not_zero: 1 bit
+              If not zero:
+                int_or_float: 1 bit
+                  0: read_int_float
+                  1: read_float
+              Else: value = 0
+            Else integer field:
+              int_is_not_zero: 1 bit
+              If not zero: read_bits(field.bits)
+              Else: value = 0
+    """
     es = old_es.copy() if old_es else EntityState(number)
     es.number = number
 
-    # Check for removal
-    if buf.read_bit():
-        # Entity removed
-        return None
-
-    # Check if there are changes
-    if not buf.read_bit():
-        # No changes
+    # Check if entity has changes
+    if not buf.read_bit():  # entity_changed
+        # No changes, return as-is
         return es
 
     field_count = len(ENTITY_FIELDS)
     last_field = buf.read_byte()
+
+    if last_field > field_count:
+        logger.warning(f"Entity last_field={last_field} > field_count={field_count}, clamping")
+        last_field = field_count
 
     for i in range(last_field):
         if not buf.read_bit():
@@ -166,13 +256,19 @@ def read_delta_entity(buf, old_es, number, key=None):
         field = ENTITY_FIELDS[i]
 
         if field.bits == 0:
-            # Float field
-            if buf.read_bit():
-                ps_val = buf.read_float()
+            # Float field: extra "is not zero" bit
+            if buf.read_bit():  # float_is_not_zero
+                if buf.read_bit():  # int_or_float
+                    es.fields[field.name] = buf.read_float()
+                else:
+                    es.fields[field.name] = buf.read_int_float()
             else:
-                ps_val = buf.read_int_float()
-            es.fields[field.name] = ps_val
+                es.fields[field.name] = 0
         else:
-            es.fields[field.name] = buf.read_bits(field.bits)
+            # Integer field: extra "is not zero" bit
+            if buf.read_bit():  # int_is_not_zero
+                es.fields[field.name] = buf.read_bits(field.bits)
+            else:
+                es.fields[field.name] = 0
 
     return es
