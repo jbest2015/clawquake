@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake — Dashboard</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <span id="username-display"></span>
+            <button class="btn btn-outline" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard">
+        <!-- Main: Video Player -->
+        <div class="video-section">
+            <div class="video-wrapper">
+                <video id="live-video" autoplay muted playsinline></video>
+                <div class="video-offline" id="video-offline">
+                    <div class="icon">&#9655;</div>
+                    <div>Waiting for match stream...</div>
+                    <div style="margin-top: 0.5rem; font-size: 0.8rem;">
+                        Stream will appear when a match is active
+                    </div>
+                </div>
+            </div>
+            <div class="match-info">
+                <span class="map-name" id="map-name">—</span>
+                <span class="status-badge status-offline" id="status-badge">OFFLINE</span>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Live Scoreboard -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Live Scores</h3>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);" id="player-count">0 players</span>
+                </div>
+                <div class="card-body" id="scoreboard">
+                    <div class="empty-state">No players connected</div>
+                </div>
+            </div>
+
+            <!-- Leaderboard + Match History Tabs -->
+            <div class="card">
+                <div class="tabs">
+                    <div class="tab active" data-tab="leaderboard" onclick="switchTab('leaderboard')">Leaderboard</div>
+                    <div class="tab" data-tab="history" onclick="switchTab('history')">History</div>
+                </div>
+                <div class="tab-content active" id="tab-leaderboard">
+                    <div class="card-body" id="leaderboard-body">
+                        <div class="empty-state">No bots ranked yet</div>
+                    </div>
+                </div>
+                <div class="tab-content" id="tab-history">
+                    <div class="card-body" id="history-body">
+                        <div class="empty-state">No match history</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Auth Guard ──────────────────────────────────────
+        const token = localStorage.getItem('clawquake_token');
+        const username = localStorage.getItem('clawquake_user');
+        if (!token) {
+            window.location.href = '/';
+        }
+        document.getElementById('username-display').textContent = username || 'User';
+
+        function logout() {
+            localStorage.removeItem('clawquake_token');
+            localStorage.removeItem('clawquake_user');
+            window.location.href = '/';
+        }
+
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        }
+
+        // ── HLS Video Player ────────────────────────────────
+        const video = document.getElementById('live-video');
+        const offlineEl = document.getElementById('video-offline');
+        let hlsInstance = null;
+        let streamActive = false;
+
+        function initStream() {
+            const streamUrl = '/stream/stream.m3u8';
+
+            if (Hls.isSupported()) {
+                hlsInstance = new Hls({
+                    liveDurationInfinity: true,
+                    liveBackBufferLength: 0,
+                    maxBufferLength: 5,
+                    maxMaxBufferLength: 10,
+                });
+                hlsInstance.loadSource(streamUrl);
+                hlsInstance.attachMedia(video);
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => {});
+                    offlineEl.style.display = 'none';
+                    streamActive = true;
+                });
+                hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        streamActive = false;
+                        offlineEl.style.display = 'flex';
+                        setTimeout(initStream, 5000);
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari native HLS
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', () => {
+                    video.play().catch(() => {});
+                    offlineEl.style.display = 'none';
+                    streamActive = true;
+                });
+            }
+        }
+
+        initStream();
+
+        // ── Live Status Polling ─────────────────────────────
+        async function pollStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                const mapEl = document.getElementById('map-name');
+                const badgeEl = document.getElementById('status-badge');
+                const countEl = document.getElementById('player-count');
+                const boardEl = document.getElementById('scoreboard');
+
+                if (data.online) {
+                    mapEl.textContent = data.map_name || 'Unknown Map';
+                    badgeEl.textContent = 'LIVE';
+                    badgeEl.className = 'status-badge status-live';
+                    countEl.textContent = data.player_count + ' players';
+
+                    if (data.players && data.players.length > 0) {
+                        // Sort by score descending
+                        const sorted = data.players.sort((a, b) => b.score - a.score);
+                        boardEl.innerHTML = sorted.map((p, i) => `
+                            <div class="score-row">
+                                <span class="rank">${i + 1}</span>
+                                <span class="name">${escapeHtml(p.name)}</span>
+                                <span class="score">${p.score}</span>
+                                <span class="stat">${p.ping}ms</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        boardEl.innerHTML = '<div class="empty-state">Waiting for players...</div>';
+                    }
+                } else {
+                    mapEl.textContent = '—';
+                    badgeEl.textContent = 'OFFLINE';
+                    badgeEl.className = 'status-badge status-offline';
+                    countEl.textContent = '0 players';
+                    boardEl.innerHTML = '<div class="empty-state">Server offline</div>';
+                }
+            } catch (e) {
+                // Silently retry
+            }
+        }
+
+        // ── Leaderboard ─────────────────────────────────────
+        async function loadLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard', { headers: authHeaders() });
+                if (res.status === 401) { logout(); return; }
+                const data = await res.json();
+                const el = document.getElementById('leaderboard-body');
+
+                if (data.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No bots ranked yet</div>';
+                    return;
+                }
+
+                el.innerHTML = data.map((bot, i) => `
+                    <div class="score-row">
+                        <span class="rank">${i + 1}</span>
+                        <span class="name">${escapeHtml(bot.name)}</span>
+                        <span class="score">${Math.round(bot.elo)}</span>
+                        <span class="stat">${bot.wins}W/${bot.losses}L</span>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        // ── Match History ───────────────────────────────────
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/matches', { headers: authHeaders() });
+                if (res.status === 401) { logout(); return; }
+                const data = await res.json();
+                const el = document.getElementById('history-body');
+
+                if (data.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No match history</div>';
+                    return;
+                }
+
+                el.innerHTML = data.map(m => `
+                    <div class="match-row">
+                        <span class="map">${escapeHtml(m.map_name)}</span>
+                        <span class="winner">${m.winner ? escapeHtml(m.winner) : '—'}</span>
+                        <span class="date">${new Date(m.started_at).toLocaleDateString()}</span>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        // ── Tabs ────────────────────────────────────────────
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+            document.getElementById('tab-' + name).classList.add('active');
+        }
+
+        // ── Utility ─────────────────────────────────────────
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ── Init ────────────────────────────────────────────
+        pollStatus();
+        loadLeaderboard();
+        loadHistory();
+
+        // Poll every 3 seconds
+        setInterval(pollStatus, 3000);
+        // Refresh leaderboard every 30 seconds
+        setInterval(loadLeaderboard, 30000);
+    </script>
+</body>
+</html>
