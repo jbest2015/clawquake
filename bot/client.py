@@ -15,6 +15,7 @@ import random
 import time
 import logging
 import websockets
+import q3huff2
 
 from .defs import (
     connstate_t, svc_ops_e, clc_ops_e, configstr_t,
@@ -70,7 +71,7 @@ class Q3Client:
         await client.run()
     """
 
-    def __init__(self, server_url, name="ClawBot", protocol=68):
+    def __init__(self, server_url, name="ClawBot", protocol=71):
         self.server_url = server_url
         self.protocol_version = protocol
         self.userinfo = default_userinfo(name)
@@ -124,7 +125,7 @@ class Q3Client:
             ping_interval=None,
         )
         self.state = connstate_t.CA_CONNECTING
-        await self._send_connectionless("getchallenge")
+        await self._send_connectionless("getchallenge 0 Quake3Arena")
 
     async def disconnect(self):
         """Disconnect from the server."""
@@ -391,25 +392,30 @@ class Q3Client:
         await self._ws.send(data)
 
     async def _send_connect(self):
-        """Send the connect packet with userinfo."""
-        ui = self.userinfo.copy()
-        ui_str = UserInfo(ui).serialize()
+        """Send the connect packet with Huffman-compressed userinfo.
 
-        # Build connect string
-        connect_str = (
-            f'connect "\\challenge\\{self.challenge}'
-            f'\\qport\\{self.qport}'
+        Protocol 71 (QuakeJS) requires the userinfo to be compressed using
+        q3huff2. The format is: 2-byte big-endian uncompressed length prefix
+        followed by Huffman-encoded data.
+        """
+        # Build userinfo string with protocol fields first
+        userinfo = (
+            f'"'
             f'\\protocol\\{self.protocol_version}'
-            f'\\ip\\0.0.0.0:0'  # QuakeJS doesn't check this
+            f'\\challenge\\{self.challenge}'
+            f'\\qport\\{self.qport}'
         )
-
-        # Append userinfo fields
         for key, value in self.userinfo.items():
-            connect_str += f'\\{key}\\{value}'
+            userinfo += f'\\{key}\\{value}'
+        userinfo += '"'
 
-        connect_str += '"'
+        # Compress using q3huff2 (2-byte BE length + Huffman bits)
+        compressed = q3huff2.compress(userinfo.encode('ascii'))
+        logger.debug(f"Connect userinfo: {len(userinfo)} chars -> {len(compressed)} bytes compressed")
 
-        await self._send_connectionless(connect_str)
+        # OOB packet: \xff\xff\xff\xff + "connect " + compressed_userinfo
+        packet = b'\xff\xff\xff\xff' + b'connect ' + compressed
+        await self._ws.send(packet)
 
     def _build_client_frame(self):
         """Build a client frame packet to send to the server."""

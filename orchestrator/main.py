@@ -8,6 +8,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from auth import (
@@ -183,3 +184,11 @@ def admin_rcon(command: str, admin: UserDB = Depends(require_admin)):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "clawquake-orchestrator"}
+
+
+# ── Static Files (must be last — catch-all) ─────────────────────
+
+import os
+STATIC_DIR = os.environ.get("STATIC_DIR", "/app/static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

@@ -37,6 +37,7 @@ done
 echo "Starting ioquake3 client as spectator..."
 LIBGL_ALWAYS_SOFTWARE=1 ioquake3 \
     +set fs_basepath /usr/share/games/quake3 \
+    +set fs_game baseoa \
     +set r_mode -1 \
     +set r_customwidth 1280 \
     +set r_customheight 720 \
