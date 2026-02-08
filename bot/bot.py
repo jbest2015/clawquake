@@ -149,7 +149,17 @@ class GameView:
 
     def to_dict(self):
         """Export game state as a JSON-serializable dict for AI consumption."""
-        return {
+        players = self.players
+        nearest = None
+        nearest_dist = float('inf')
+        if players:
+            for p in players:
+                d = self.distance_to(p['position'])
+                if d < nearest_dist:
+                    nearest_dist = d
+                    nearest = p
+
+        state = {
             'my_position': list(self.my_position),
             'my_velocity': list(self.my_velocity),
             'my_viewangles': list(self.my_viewangles),
@@ -157,8 +167,23 @@ class GameView:
             'my_health': self.my_health,
             'my_client_num': self.my_client_num,
             'server_time': self.server_time,
-            'players': self.players,
+            'players': players,
+            'player_count': len(players),
+            'nearest_enemy_distance': round(nearest_dist, 1) if nearest else None,
         }
+
+        # Add ammo/armor from playerstate if available
+        ps = self._bot.client.player_state
+        if ps:
+            state['my_armor'] = getattr(ps, 'armor', 0) or 0
+            stats = getattr(ps, 'stats', None)
+            if stats and isinstance(stats, list):
+                state['my_stats'] = list(stats)
+            ammo = getattr(ps, 'ammo', None)
+            if ammo and isinstance(ammo, list):
+                state['my_ammo'] = list(ammo)
+
+        return state
 
 
 class ClawBot:

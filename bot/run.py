@@ -12,6 +12,7 @@ use the ClawBot class directly from your agent code.
 import asyncio
 import argparse
 import logging
+import os
 import random
 
 from .bot import ClawBot
@@ -25,6 +26,8 @@ logger = logging.getLogger('clawquake.runner')
 
 # --- Demo runtime config ---
 
+CHAT_FILE = os.path.join(os.path.dirname(__file__), '..', '.chat_input')
+
 DEMO_CONFIG = {
     "trash_talk_rate": 0.03,
     "slash_chat": False,
@@ -33,6 +36,23 @@ DEMO_CONFIG = {
 
 async def demo_ai_tick(bot, game):
     """Simple demo AI: chase nearest player, shoot, strafe, and taunt."""
+    # Check for messages from Claude via .chat_input file
+    try:
+        if os.path.exists(CHAT_FILE):
+            with open(CHAT_FILE, 'r') as f:
+                lines = f.readlines()
+            if lines:
+                # Clear the file
+                with open(CHAT_FILE, 'w') as f:
+                    pass
+                for line in lines:
+                    msg = line.strip()
+                    if msg:
+                        bot.say(msg)
+                        logger.info(f"Sent chat from Claude: {msg}")
+    except Exception:
+        pass
+
     nearest = game.nearest_player()
 
     if nearest:
