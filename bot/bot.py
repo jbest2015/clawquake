@@ -14,6 +14,7 @@ import asyncio
 import math
 import logging
 import random
+import re
 import time
 
 from .client import Q3Client
@@ -373,28 +374,39 @@ class ClawBot:
     @staticmethod
     def _parse_kill_message(message):
         """
-        Parse basic Q3 obituary text into (killer, victim, weapon).
-
-        Expected pattern examples:
-          "Victim was railgunned by Killer"
-          "Victim killed by Killer"
+        Parse Q3 obituary text into (killer, victim, weapon).
+        
+        Uses regex to handle various patterns:
+        - "Victim was railgunned by Killer"
+        - "Victim was melted by Killer's plasmagun"
+        - "Victim almost dodged Killer's rocket"
         """
-        if " by " not in message:
-            return None
-        left, killer = message.rsplit(" by ", 1)
-        killer = killer.strip()
-        if " was " in left:
-            victim, weapon = left.split(" was ", 1)
-        elif " killed " in left:
-            victim, weapon = left.split(" killed ", 1)
-        else:
-            return None
+        # Common Q3 kill patterns
+        # 1. "Victim was <action> by Killer"
+        # 2. "Victim was <action> by Killer's <weapon>"
+        # 3. "Victim almost dodged Killer's <weapon>"
+        
+        # Regex for "by Killer" patterns
+        # Matches: "PlayerA was railgunned by PlayerB"
+        match = re.search(r"(.+) was .+ by (.+)'s (.+)", message)
+        if match:
+            return match.group(2), match.group(1), match.group(3)
 
-        victim = victim.strip()
-        weapon = weapon.strip()
-        if not killer or not victim:
-            return None
-        return killer, victim, weapon
+        match = re.search(r"(.+) was .+ by (.+)", message)
+        if match:
+            return match.group(2), match.group(1), "unknown"
+            
+        # Matches: "PlayerA almost dodged PlayerB's rocket"
+        match = re.search(r"(.+) almost dodged (.+)'s (.+)", message)
+        if match:
+            return match.group(2), match.group(1), match.group(3)
+            
+        # Matches: "PlayerA killed PlayerB" (less common in Q3 but possible in mods)
+        match = re.search(r"(.+) killed (.+)", message)
+        if match:
+            return match.group(1), match.group(2), "unknown"
+
+        return None
 
     # --- State queries ---
 

@@ -162,14 +162,16 @@ def read_delta_playerstate(buf, old_ps):
             # Float field
             if buf.read_bit():
                 # Full IEEE float
-                ps.fields[field.name] = buf.read_float()
+                val = buf.read_float()
             else:
                 # Int-encoded float (13 bits with bias)
-                ps.fields[field.name] = buf.read_int_float()
+                val = buf.read_int_float()
+            ps.fields[field.name] = val
         else:
             # Integer field
             bits = abs(field.bits)
-            ps.fields[field.name] = buf.read_bits(bits)
+            val = buf.read_bits(bits)
+            ps.fields[field.name] = val
 
     # Read arrays section
     if buf.read_bit():  # arrays_changed

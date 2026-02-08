@@ -167,7 +167,7 @@ def _parse_snapshot(buf, frame, baselines, old_snapshots, current_sequence=0):
         old_snapshots: dict of (sequence & PACKET_MASK) -> Snapshot
         current_sequence: current message sequence number (for delta lookup)
     """
-    from .defs import PACKET_BACKUP, PACKET_MASK
+    from .defs import PACKET_MASK
 
     snap = Snapshot()
     snap.server_time = buf.read_long()
@@ -183,18 +183,14 @@ def _parse_snapshot(buf, frame, baselines, old_snapshots, current_sequence=0):
         buf.read_byte()  # area_mask data
 
     if delta_num == 0:
-        # No delta - full snapshot
         old_snap = None
     else:
-        # Look up the base snapshot by relative offset
         base_seq = current_sequence - delta_num
         base_key = base_seq & PACKET_MASK
         old_snap = old_snapshots.get(base_key)
         if old_snap and old_snap.message_num != base_seq:
-            # Stale entry in circular buffer — can't delta from it
             old_snap = None
         if not old_snap:
-            # Can't decode this snapshot without the reference
             return
 
     # Read player state

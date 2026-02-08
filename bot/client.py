@@ -120,6 +120,7 @@ class Q3Client:
         self._aim_frames = 0
         self._pure_checksums = pure_checksums  # "cgame ui @ refs... checksum" (no leading "cp <serverid>")
         self._pure_sent = False
+        self._begin_sent = False
         self._last_usercmd = {
             "server_time": 0,
             "angles": [0, 0, 0],
@@ -156,6 +157,7 @@ class Q3Client:
             max_size=None,
             ping_interval=None,
         )
+        self._begin_sent = False
         self.state = connstate_t.CA_CONNECTING
         await self._send_connectionless("getchallenge 0 Quake3Arena")
 
@@ -168,6 +170,7 @@ class Q3Client:
             except Exception:
                 pass
         self.state = connstate_t.CA_DISCONNECTED
+        self._begin_sent = False
         if self._ws:
             await self._ws.close()
             self._ws = None
@@ -179,20 +182,27 @@ class Q3Client:
 
         while self._running:
             try:
+                frame_start = asyncio.get_event_loop().time()
+
                 # Drain all pending packets from the server
-                while True:
+                for _ in range(5):
                     try:
-                        data = await asyncio.wait_for(self._ws.recv(), timeout=frame_time)
+                        data = await asyncio.wait_for(self._ws.recv(), timeout=0.005)
                         if isinstance(data, bytes):
                             await self._handle_packet(data)
                     except asyncio.TimeoutError:
-                        break  # No more pending data, send our frame
+                        break  # No more pending data
 
                 # Send client frame if connected
                 if self.state.value >= connstate_t.CA_CONNECTED.value:
                     frame = self._build_client_frame()
                     if frame:
                         await self._ws.send(frame)
+
+                # Sleep for remaining frame time
+                elapsed = asyncio.get_event_loop().time() - frame_start
+                sleep_time = max(0.001, frame_time - elapsed)
+                await asyncio.sleep(sleep_time)
 
             except websockets.exceptions.ConnectionClosed as e:
                 logger.warning(f"Connection closed: {e}")
@@ -456,6 +466,11 @@ class Q3Client:
         if self.state == connstate_t.CA_CONNECTED and frame.config_strings and frame.client_num >= 0:
             self.state = connstate_t.CA_PRIMED
             logger.info(f"Gamestate received, primed (client_num={self.client_num})")
+            if not self._begin_sent:
+                # Q3 requires explicit begin after gamestate to transition to live snapshots.
+                self.queue_command(f"begin {self.server_id}")
+                self._begin_sent = True
+                logger.info(f"Sent begin for server_id={self.server_id}")
         # CA_PRIMED -> CA_ACTIVE: after receiving first snapshot post-gamestate
         if self.state == connstate_t.CA_PRIMED and frame.snapshot:
             self.state = connstate_t.CA_ACTIVE
