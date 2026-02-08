@@ -235,6 +235,7 @@ If 0: read_delta_entity (from empty base)
 8. **Wrong delta reference lookup** -- `delta_num` is a relative offset, not absolute sequence
 9. **Protocol 68 vs 71** -- Protocol 71 has NO XOR encryption, HAS checksums in both directions
 10. **Not sending client frames** -- Server times you out after ~30 seconds
+11. **Pure servers (`sv_pure=1`)** -- You must send a valid `cp` checksum command (and `vdr`) or the server will ignore usercmd movement/spawn
 
 ## Python Dependencies
 

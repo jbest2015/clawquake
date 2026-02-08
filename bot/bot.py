@@ -13,13 +13,26 @@ Designed to be controlled by an OpenClaw AI agent plugin.
 import asyncio
 import math
 import logging
+import random
 import time
 
 from .client import Q3Client
-from .defs import entityType_t, weapon_t, configstr_t
-from .snapshot import Snapshot, PlayerState
+from .defs import weapon_t
 
 logger = logging.getLogger('clawquake.bot')
+
+DEFAULT_TAUNTS = [
+    "Is that all you got?",
+    "My grandma plays better than you!",
+    "GG EZ",
+    "You should try aiming AT me!",
+    "I'm an AI and I'm still better!",
+    "Beep boop. You've been eliminated.",
+    "01001100 01001111 01001100",
+    "Processing your defeat...",
+    "rm -rf your_skill",
+    "I was trained on your mistakes",
+]
 
 
 class GameView:
@@ -163,8 +176,8 @@ class ClawBot:
         await bot.start()
     """
 
-    def __init__(self, server_url, name="ClawBot", protocol=68):
-        self.client = Q3Client(server_url, name=name, protocol=protocol)
+    def __init__(self, server_url, name="ClawBot", protocol=71, pure_checksums=None):
+        self.client = Q3Client(server_url, name=name, protocol=protocol, pure_checksums=pure_checksums)
         self.game = GameView(self)
         self._action_queue = []
         self._chat_log = []
@@ -193,41 +206,60 @@ class ClawBot:
         """Disconnect from the server."""
         await self.client.disconnect()
 
-    # --- Action API (queue actions for next tick) ---
+    # --- Action API ---
 
     def move_forward(self):
         """Move forward."""
-        self._action_queue.append("+forward")
-        self._action_queue.append("-forward")
+        self.client.hold_forward()
 
     def move_back(self):
         """Move backward."""
-        self._action_queue.append("+back")
-        self._action_queue.append("-back")
+        self.client.hold_back()
 
     def move_left(self):
         """Strafe left."""
-        self._action_queue.append("+moveleft")
-        self._action_queue.append("-moveleft")
+        self.client.hold_left()
 
     def move_right(self):
         """Strafe right."""
-        self._action_queue.append("+moveright")
-        self._action_queue.append("-moveright")
+        self.client.hold_right()
 
     def jump(self):
         """Jump."""
-        self._action_queue.append("+moveup")
-        self._action_queue.append("-moveup")
+        self.client.jump()
 
     def attack(self):
         """Fire current weapon."""
-        self._action_queue.append("+attack")
-        self._action_queue.append("-attack")
+        self.client.attack()
+
+    def look(self, pitch=None, yaw=None, roll=None):
+        """Set absolute view angles in degrees."""
+        self.client.set_viewangles(pitch=pitch, yaw=yaw, roll=roll)
+
+    def turn_left(self, degrees=10.0):
+        """Turn view left (positive yaw)."""
+        self.client.turn(yaw_delta=float(degrees))
+
+    def turn_right(self, degrees=10.0):
+        """Turn view right (negative yaw)."""
+        self.client.turn(yaw_delta=-float(degrees))
+
+    def aim_at(self, target_pos):
+        """Aim view at a world-space target position (x, y, z)."""
+        my = self.game.my_position
+        dx = target_pos[0] - my[0]
+        dy = target_pos[1] - my[1]
+        dz = target_pos[2] - my[2]
+
+        yaw = math.degrees(math.atan2(dy, dx))
+        dist_xy = math.sqrt(dx * dx + dy * dy)
+        pitch = -math.degrees(math.atan2(dz, max(dist_xy, 1e-6)))
+
+        self.look(pitch=pitch, yaw=yaw)
 
     def use_weapon(self, weapon_num):
         """Switch to a weapon by number (1-9)."""
-        self._action_queue.append(f"weapon {weapon_num}")
+        self.client.select_weapon(weapon_num)
 
     def say(self, message):
         """Send chat message to all players (trash talk!)."""
@@ -236,6 +268,15 @@ class ClawBot:
     def say_team(self, message):
         """Send team chat message."""
         self.client.say_team(message)
+
+    def taunt(self, message=None, team=False, use_slash=False):
+        """Send trash talk. If no message is provided, chooses one at random."""
+        text = (message or random.choice(DEFAULT_TAUNTS)).replace('"', "'").strip()
+        prefix = "/" if use_slash else ""
+        if team:
+            self.execute(f'{prefix}say_team "{text}"')
+        else:
+            self.execute(f'{prefix}say "{text}"')
 
     def execute(self, command):
         """Execute a raw Q3 console command."""
@@ -299,6 +340,36 @@ class ClawBot:
                     'time': time.time(),
                     'message': msg,
                 })
+                parsed = self._parse_kill_message(msg)
+                if parsed and self.on_kill:
+                    killer, victim, weapon = parsed
+                    await self.on_kill(self, killer, victim, weapon)
+
+    @staticmethod
+    def _parse_kill_message(message):
+        """
+        Parse basic Q3 obituary text into (killer, victim, weapon).
+
+        Expected pattern examples:
+          "Victim was railgunned by Killer"
+          "Victim killed by Killer"
+        """
+        if " by " not in message:
+            return None
+        left, killer = message.rsplit(" by ", 1)
+        killer = killer.strip()
+        if " was " in left:
+            victim, weapon = left.split(" was ", 1)
+        elif " killed " in left:
+            victim, weapon = left.split(" killed ", 1)
+        else:
+            return None
+
+        victim = victim.strip()
+        weapon = weapon.strip()
+        if not killer or not victim:
+            return None
+        return killer, victim, weapon
 
     # --- State queries ---
 

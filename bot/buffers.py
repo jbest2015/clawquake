@@ -152,8 +152,26 @@ class Buffer:
     def write_byte(self, value):
         self._writer.write_byte(value)
 
+    def write_short(self, value):
+        self._writer.write_short(value)
+
     def write_long(self, value):
         self._writer.write_long(value)
+
+    def write_float(self, value):
+        self._writer.write_float(value)
+
+    def write_delta(self, old, new, bits):
+        self._writer.write_delta(old, new, bits)
+
+    def write_delta_key(self, key, old, new, bits):
+        self._writer.write_delta_key(key, old, new, bits)
+
+    def write_delta_float(self, old, new):
+        self._writer.write_delta_float(old, new)
+
+    def write_delta_key_float(self, key, old, new):
+        self._writer.write_delta_key_float(key, old, new)
 
     def write_string(self, string):
         if isinstance(string, bytes):

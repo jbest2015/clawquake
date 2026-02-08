@@ -18,16 +18,19 @@ import websockets
 import q3huff2
 
 from .defs import (
-    connstate_t, svc_ops_e, clc_ops_e, configstr_t,
-    CONNECTIONLESS_MARKER, FRAGMENT_BIT, MAX_RELIABLE_COMMANDS,
-    MAX_CONFIGSTRINGS, PACKET_BACKUP, PACKET_MASK,
+    connstate_t, clc_ops_e, configstr_t,
+    FRAGMENT_BIT, MAX_RELIABLE_COMMANDS, PACKET_MASK,
 )
 from .buffers import BufferOverflow
 from .buffers import Buffer
-from .protocol import parse_connectionless, parse_server_frame, ServerFrame
-from .snapshot import Snapshot, PlayerState, EntityState
+from .protocol import parse_connectionless, parse_server_frame
 
 logger = logging.getLogger('clawquake.client')
+
+BUTTON_ATTACK = 1
+DEFAULT_MOVE_FRAMES = 8
+DEFAULT_BUTTON_FRAMES = 2
+DEFAULT_VIEW_FRAMES = 8
 
 
 class UserInfo(dict):
@@ -72,7 +75,7 @@ class Q3Client:
         await client.run()
     """
 
-    def __init__(self, server_url, name="ClawBot", protocol=71):
+    def __init__(self, server_url, name="ClawBot", protocol=71, pure_checksums=None):
         self.server_url = server_url
         self.protocol_version = protocol
         self.userinfo = default_userinfo(name)
@@ -84,6 +87,7 @@ class Q3Client:
         self.server_id = 0
         self.checksum_feed = 0
         self.client_num = -1
+        self.sv_pure = 0
 
         # Sequence tracking
         self.message_seq = 0        # last received server sequence
@@ -102,6 +106,29 @@ class Q3Client:
         self.snapshots = {}         # (sequence & PACKET_MASK) -> Snapshot (circular buffer)
         self.current_snapshot = None
         self.server_time = 0
+
+        # Pending input state (held for a few frames so lower-rate AI loops still move)
+        self._held_forward = 0
+        self._held_right = 0
+        self._held_up = 0
+        self._held_forward_frames = 0
+        self._held_right_frames = 0
+        self._held_up_frames = 0
+        self._held_attack_frames = 0
+        self._pending_weapon = 0
+        self._aim_angles = None
+        self._aim_frames = 0
+        self._pure_checksums = pure_checksums  # "cgame ui @ refs... checksum" (no leading "cp <serverid>")
+        self._pure_sent = False
+        self._last_usercmd = {
+            "server_time": 0,
+            "angles": [0, 0, 0],
+            "forwardmove": 0,
+            "rightmove": 0,
+            "upmove": 0,
+            "buttons": 0,
+            "weapon": 0,
+        }
 
         # WebSocket
         self._ws = None
@@ -179,6 +206,9 @@ class Q3Client:
 
     def queue_command(self, command):
         """Queue a reliable command to send to the server. Returns command sequence."""
+        command = self._normalize_console_command(command)
+        if not command:
+            return None
         assert 64 > self.reliable_seq - self.reliable_ack, "Reliable command overflow"
         self.reliable_seq += 1
         inx = self.reliable_seq % 64
@@ -194,11 +224,104 @@ class Q3Client:
 
     def say(self, message):
         """Send a chat message to all players."""
-        return self.queue_command(f'say "{message}"')
+        clean = str(message).replace('"', "'").strip()
+        return self.queue_command(f'say "{clean}"')
 
     def say_team(self, message):
         """Send a team chat message."""
-        return self.queue_command(f'say_team "{message}"')
+        clean = str(message).replace('"', "'").strip()
+        return self.queue_command(f'say_team "{clean}"')
+
+    @staticmethod
+    def _normalize_console_command(command):
+        """Normalize incoming console command text, accepting optional '/' prefix."""
+        cmd = str(command).strip()
+        while cmd.startswith('/'):
+            cmd = cmd[1:].lstrip()
+        return cmd
+
+    def hold_move(self, forward=0, right=0, up=0, frames=DEFAULT_MOVE_FRAMES):
+        """Hold movement axes for a short duration measured in client frames."""
+        if forward:
+            self._set_axis_hold("forward", forward, frames)
+        if right:
+            self._set_axis_hold("right", right, frames)
+        if up:
+            self._set_axis_hold("up", up, frames)
+
+    def hold_forward(self, frames=DEFAULT_MOVE_FRAMES):
+        self.hold_move(forward=127, frames=frames)
+
+    def hold_back(self, frames=DEFAULT_MOVE_FRAMES):
+        self.hold_move(forward=-127, frames=frames)
+
+    def hold_left(self, frames=DEFAULT_MOVE_FRAMES):
+        self.hold_move(right=-127, frames=frames)
+
+    def hold_right(self, frames=DEFAULT_MOVE_FRAMES):
+        self.hold_move(right=127, frames=frames)
+
+    def jump(self, frames=DEFAULT_BUTTON_FRAMES):
+        self.hold_move(up=127, frames=frames)
+
+    def attack(self, frames=DEFAULT_BUTTON_FRAMES):
+        self._held_attack_frames = max(self._held_attack_frames, frames)
+
+    def select_weapon(self, weapon_num):
+        self._pending_weapon = weapon_num & 0xFF
+
+    def set_pure_checksums(self, cgame_checksum, ui_checksum, referenced_checksums):
+        """Set pure checksum payload (checksums must be pure checksums, not sv_paks)."""
+        refs = [int(x) for x in referenced_checksums]
+        encoded = self.checksum_feed
+        for value in refs:
+            encoded ^= value
+        encoded ^= len(refs)
+        refs_part = " ".join(str(v) for v in refs)
+        if refs_part:
+            self._pure_checksums = f"{int(cgame_checksum)} {int(ui_checksum)} @ {refs_part} {int(encoded)}"
+        else:
+            self._pure_checksums = f"{int(cgame_checksum)} {int(ui_checksum)} @ {int(encoded)}"
+        self._pure_sent = False
+
+    def set_pure_checksums_raw(self, pure_checksums_payload):
+        """Set raw payload for cp command: '<cgame> <ui> @ <refs...> <encoded>'."""
+        self._pure_checksums = pure_checksums_payload.strip()
+        self._pure_sent = False
+
+    def set_viewangles(self, pitch=None, yaw=None, roll=None, frames=DEFAULT_VIEW_FRAMES):
+        """Set absolute viewangles (degrees) for a short frame window."""
+        current_pitch, current_yaw, current_roll = self._current_viewangles()
+        new_pitch = current_pitch if pitch is None else self._normalize_pitch(pitch)
+        new_yaw = current_yaw if yaw is None else self._normalize_yaw(yaw)
+        new_roll = current_roll if roll is None else self._normalize_roll(roll)
+
+        self._aim_angles = [new_pitch, new_yaw, new_roll]
+        self._aim_frames = max(self._aim_frames, max(1, int(frames)))
+
+    def turn(self, yaw_delta=0.0, pitch_delta=0.0, roll_delta=0.0, frames=DEFAULT_VIEW_FRAMES):
+        """Apply relative angle deltas in degrees."""
+        pitch, yaw, roll = self._current_viewangles()
+        self.set_viewangles(
+            pitch=pitch + float(pitch_delta),
+            yaw=yaw + float(yaw_delta),
+            roll=roll + float(roll_delta),
+            frames=frames,
+        )
+
+    def _set_axis_hold(self, axis, value, frames):
+        value = self._clamp_signed_char(value)
+        frames = max(1, int(frames))
+
+        if axis == "forward":
+            self._held_forward = value
+            self._held_forward_frames = max(self._held_forward_frames, frames)
+        elif axis == "right":
+            self._held_right = value
+            self._held_right_frames = max(self._held_right_frames, frames)
+        elif axis == "up":
+            self._held_up = value
+            self._held_up_frames = max(self._held_up_frames, frames)
 
     # --- Packet handling ---
 
@@ -409,6 +532,8 @@ class Q3Client:
                      f"{len(frame.config_strings)} config strings, "
                      f"{len(self.baselines)} baselines")
 
+        self._maybe_send_pure_handshake()
+
     def _process_configstring(self, index, value):
         """Process a config string update."""
         if index == configstr_t.CS_SYSTEMINFO:
@@ -416,6 +541,35 @@ class Q3Client:
             pairs = self._parse_info_string(value)
             if 'sv_serverid' in pairs:
                 self.server_id = int(pairs['sv_serverid'])
+            if 'sv_pure' in pairs:
+                try:
+                    self.sv_pure = int(pairs['sv_pure'])
+                except ValueError:
+                    self.sv_pure = 0
+
+    def _maybe_send_pure_handshake(self):
+        """
+        Send pure handshake if server requires it.
+
+        For sv_pure=1, server ignores usercmd movement until it receives a valid
+        'cp' command payload generated from the client's local pak set.
+        """
+        if self._pure_sent:
+            return
+        if self.sv_pure == 0:
+            self._pure_sent = True
+            return
+
+        if self._pure_checksums:
+            self.queue_command(f"cp {self.server_id} {self._pure_checksums}")
+            self.queue_command("vdr")
+            logger.info("Sent pure checksum handshake (cp/vdr)")
+            self._pure_sent = True
+        else:
+            logger.warning(
+                "Server requires pure checksums (sv_pure=1) but no pure checksum payload is configured; "
+                "movement/spawn usercmds will be ignored until cp is sent."
+            )
 
     def _parse_info_string(self, text):
         """Parse a Q3 info string (\\key\\value\\key2\\value2) into a dict."""
@@ -519,18 +673,22 @@ class Q3Client:
             writer.write_long(i)
             writer.write_string(self.reliable_commands[inx])
 
-        # Send usermove (minimal - just keepalive)
+        # Send usermove with no delta baseline (clc_moveNoDelta).
         writer.write_byte(clc_ops_e.clc_moveNoDelta.value)
         writer.write_byte(1)  # command count
-
-        if self.server_time == 0:
-            writer.write_bits(1, 1)   # time delta bit
-            writer.write_bits(1, 8)   # delta value
-        else:
-            writer.write_bits(0, 1)   # no time delta bit
-            writer.write_long(self.server_time + 100)
-
-        writer.write_bits(0, 1)  # no movement changes
+        cmd = self._next_usercmd()
+        key = self._command_key()
+        null_cmd = {
+            "server_time": 0,
+            "angles": [0, 0, 0],
+            "forwardmove": 0,
+            "rightmove": 0,
+            "upmove": 0,
+            "buttons": 0,
+            "weapon": 0,
+        }
+        self._write_delta_usercmd(writer, key, null_cmd, cmd)
+        self._last_usercmd = cmd
 
         writer.write_byte(clc_ops_e.clc_EOF.value)
 
@@ -552,6 +710,158 @@ class Q3Client:
 
         self.outgoing_seq += 1
         return bytes(packet)
+
+    def _next_usercmd(self):
+        """Build the next usercmd from held input state."""
+        if self.server_time:
+            server_time = self.server_time + 50
+        elif self._last_usercmd["server_time"]:
+            server_time = self._last_usercmd["server_time"] + 50
+        else:
+            server_time = int(time.time() * 1000) & 0xFFFFFFFF
+
+        if self._aim_angles and self._aim_frames > 0:
+            angles = [self._angle_to_short(a) for a in self._aim_angles]
+        else:
+            player_state = self.player_state
+            if player_state:
+                angles = [self._angle_to_short(a) for a in player_state.viewangles]
+            else:
+                angles = list(self._last_usercmd["angles"])
+
+        forward = self._held_forward if self._held_forward_frames > 0 else 0
+        right = self._held_right if self._held_right_frames > 0 else 0
+        up = self._held_up if self._held_up_frames > 0 else 0
+        buttons = BUTTON_ATTACK if self._held_attack_frames > 0 else 0
+        weapon = self._pending_weapon or self._last_usercmd["weapon"]
+
+        self._consume_held_inputs()
+
+        return {
+            "server_time": server_time,
+            "angles": angles,
+            "forwardmove": forward & 0xFF,
+            "rightmove": right & 0xFF,
+            "upmove": up & 0xFF,
+            "buttons": buttons & 0xFFFF,
+            "weapon": weapon & 0xFF,
+        }
+
+    def _current_viewangles(self):
+        if self._aim_angles and self._aim_frames > 0:
+            return tuple(self._aim_angles)
+
+        player_state = self.player_state
+        if player_state:
+            return tuple(float(v) for v in player_state.viewangles)
+
+        return tuple(self._short_to_angle(v) for v in self._last_usercmd["angles"])
+
+    def _consume_held_inputs(self):
+        if self._held_forward_frames > 0:
+            self._held_forward_frames -= 1
+        if self._held_forward_frames == 0:
+            self._held_forward = 0
+
+        if self._held_right_frames > 0:
+            self._held_right_frames -= 1
+        if self._held_right_frames == 0:
+            self._held_right = 0
+
+        if self._held_up_frames > 0:
+            self._held_up_frames -= 1
+        if self._held_up_frames == 0:
+            self._held_up = 0
+
+        if self._held_attack_frames > 0:
+            self._held_attack_frames -= 1
+
+        if self._aim_frames > 0:
+            self._aim_frames -= 1
+        if self._aim_frames == 0:
+            self._aim_angles = None
+
+        # Weapon switch is one-shot; server keeps current weapon state.
+        self._pending_weapon = 0
+
+    def _command_key(self):
+        """Compute Q3 delta key for usercmd encoding."""
+        key = self.checksum_feed
+        key ^= self.message_seq
+        key ^= self._hash_key(self.server_commands[self.command_seq % MAX_RELIABLE_COMMANDS], 32)
+        return key & 0xFFFFFFFF
+
+    def _write_delta_usercmd(self, writer, key, old, new):
+        """Write MSG_WriteDeltaUsercmdKey-compatible payload."""
+        time_delta = (new["server_time"] - old["server_time"]) & 0xFFFFFFFF
+        if old["server_time"] and time_delta < 256:
+            writer.write_bits(1, 1)
+            writer.write_bits(time_delta, 8)
+        else:
+            writer.write_bits(0, 1)
+            writer.write_long(new["server_time"])
+
+        changed = (
+            old["angles"] != new["angles"] or
+            old["forwardmove"] != new["forwardmove"] or
+            old["rightmove"] != new["rightmove"] or
+            old["upmove"] != new["upmove"] or
+            old["buttons"] != new["buttons"] or
+            old["weapon"] != new["weapon"]
+        )
+
+        writer.write_bits(1 if changed else 0, 1)
+        if not changed:
+            return
+
+        # ioq3 MSG_WriteDeltaUsercmdKey mixes serverTime into the field key.
+        keyed = (key ^ new["server_time"]) & 0xFFFFFFFF
+
+        writer.write_delta_key(keyed, old["angles"][0], new["angles"][0], 16)
+        writer.write_delta_key(keyed, old["angles"][1], new["angles"][1], 16)
+        writer.write_delta_key(keyed, old["angles"][2], new["angles"][2], 16)
+        writer.write_delta_key(keyed, old["forwardmove"], new["forwardmove"], 8)
+        writer.write_delta_key(keyed, old["rightmove"], new["rightmove"], 8)
+        writer.write_delta_key(keyed, old["upmove"], new["upmove"], 8)
+        writer.write_delta_key(keyed, old["buttons"], new["buttons"], 16)
+        writer.write_delta_key(keyed, old["weapon"], new["weapon"], 8)
+
+    @staticmethod
+    def _hash_key(text, max_len=32):
+        if not text:
+            return 0
+        hash_value = 0
+        for i, ch in enumerate(text[:max_len]):
+            hash_value += ord(ch) * (119 + i)
+        hash_value = hash_value ^ (hash_value >> 10) ^ (hash_value >> 20)
+        return hash_value & 0xFFFFFFFF
+
+    @staticmethod
+    def _angle_to_short(angle):
+        return int((float(angle) * 65536.0 / 360.0)) & 0xFFFF
+
+    @staticmethod
+    def _short_to_angle(value):
+        return (float(value & 0xFFFF) * 360.0) / 65536.0
+
+    @staticmethod
+    def _normalize_pitch(value):
+        return max(-89.0, min(89.0, float(value)))
+
+    @staticmethod
+    def _normalize_yaw(value):
+        return float(value) % 360.0
+
+    @staticmethod
+    def _normalize_roll(value):
+        value = float(value) % 360.0
+        if value > 180.0:
+            value -= 360.0
+        return value
+
+    @staticmethod
+    def _clamp_signed_char(value):
+        return max(-127, min(127, int(value)))
 
     def _encrypt_packet(self, packet, key, last_command):
         """XOR encrypt client packet (protocol 68)."""

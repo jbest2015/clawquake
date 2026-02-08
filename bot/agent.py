@@ -25,9 +25,14 @@ agent.send_actions([            # Send batch of actions
 ## Available Actions:
   - move_forward, move_back, move_left, move_right
   - jump, attack
+  - turn_left [degrees], turn_right [degrees]
+  - look_yaw <degrees>, look_pitch <degrees>
+  - aim_at <x> <y> <z>
+  - taunt [message], taunt_team [message]
   - weapon <1-9>
   - say <message>          (all chat / trash talk)
   - say_team <message>     (team chat)
+  - /<console_command>     (slash command syntax, e.g. /say hello)
   - raw <console_command>  (raw Q3 console command)
 
 ## Game State Dict:
@@ -59,7 +64,7 @@ agent.send_actions([            # Send batch of actions
 import asyncio
 import logging
 
-from .bot import ClawBot, GameView
+from .bot import ClawBot
 
 logger = logging.getLogger('clawquake.agent')
 
@@ -79,6 +84,8 @@ ACTION_MAP = {
     'attack': 'attack',
     'shoot': 'attack',
     'fire': 'attack',
+    'turn_left': 'turn_left',
+    'turn_right': 'turn_right',
 }
 
 
@@ -90,8 +97,8 @@ class ClawQuakeAgent:
     can use to play Quake 3.
     """
 
-    def __init__(self, server_url, name="ClawBot", protocol=68):
-        self.bot = ClawBot(server_url, name=name, protocol=protocol)
+    def __init__(self, server_url, name="ClawBot", protocol=71, pure_checksums=None):
+        self.bot = ClawBot(server_url, name=name, protocol=protocol, pure_checksums=pure_checksums)
         self._state_ready = asyncio.Event()
         self._latest_state = {}
         self._connected = False
@@ -148,8 +155,10 @@ class ClawQuakeAgent:
         Each action is one of:
             - Simple movement: move_forward, move_back, move_left, move_right, jump
             - Combat: attack, shoot, fire
+            - View: turn_left [deg], turn_right [deg], look_yaw <deg>, look_pitch <deg>, aim_at <x> <y> <z>
+            - Chat: taunt [message], taunt_team [message], say <message>, say_team <message>
             - Weapon switch: weapon 1, weapon 2, ... weapon 9
-            - Chat: say <message>, say_team <message>
+            - Slash command: /<command> (e.g. /say hello)
             - Raw command: raw <console_command>
         """
         for action in actions:
@@ -160,9 +169,24 @@ class ClawQuakeAgent:
         action = action.strip()
         lower = action.lower()
 
+        # Slash-prefixed command syntax (how humans type in the console)
+        if action.startswith('/'):
+            self.bot.execute(action)
+            return
+
         # Simple mapped actions
         if lower in ACTION_MAP:
             getattr(self.bot, ACTION_MAP[lower])()
+            return
+
+        # Taunts with optional custom message
+        if lower.startswith('taunt_team'):
+            msg = action[len('taunt_team'):].strip()
+            self.bot.taunt(message=msg or None, team=True, use_slash=True)
+            return
+        if lower.startswith('taunt'):
+            msg = action[len('taunt'):].strip()
+            self.bot.taunt(message=msg or None, team=False, use_slash=True)
             return
 
         # Weapon switch
@@ -172,6 +196,49 @@ class ClawQuakeAgent:
                 self.bot.use_weapon(num)
             except (IndexError, ValueError):
                 logger.warning(f"Invalid weapon action: {action}")
+            return
+
+        # Turn controls (optional degrees, defaults in bot methods)
+        if lower.startswith('turn_left'):
+            try:
+                parts = action.split()
+                degrees = float(parts[1]) if len(parts) > 1 else 10.0
+                self.bot.turn_left(degrees)
+            except ValueError:
+                logger.warning(f"Invalid turn_left action: {action}")
+            return
+        if lower.startswith('turn_right'):
+            try:
+                parts = action.split()
+                degrees = float(parts[1]) if len(parts) > 1 else 10.0
+                self.bot.turn_right(degrees)
+            except ValueError:
+                logger.warning(f"Invalid turn_right action: {action}")
+            return
+
+        # Explicit look control
+        if lower.startswith('look_yaw '):
+            try:
+                self.bot.look(yaw=float(action.split()[1]))
+            except (IndexError, ValueError):
+                logger.warning(f"Invalid look_yaw action: {action}")
+            return
+        if lower.startswith('look_pitch '):
+            try:
+                self.bot.look(pitch=float(action.split()[1]))
+            except (IndexError, ValueError):
+                logger.warning(f"Invalid look_pitch action: {action}")
+            return
+
+        # Aim at world coordinates
+        if lower.startswith('aim_at '):
+            try:
+                parts = action.split()
+                if len(parts) != 4:
+                    raise ValueError("aim_at requires 3 coordinates")
+                self.bot.aim_at((float(parts[1]), float(parts[2]), float(parts[3])))
+            except ValueError:
+                logger.warning(f"Invalid aim_at action: {action}")
             return
 
         # Chat
@@ -236,8 +303,20 @@ async def run_agent_demo(server_url="ws://clawquake.johnbest.ai:27960", name="Cl
             # Simple AI logic
             actions = []
             players = state.get('players', [])
+            my_pos = state.get('my_position', [0.0, 0.0, 0.0])
 
             if players:
+                nearest = min(
+                    players,
+                    key=lambda p: (
+                        (p['position'][0] - my_pos[0]) ** 2 +
+                        (p['position'][1] - my_pos[1]) ** 2 +
+                        (p['position'][2] - my_pos[2]) ** 2
+                    ),
+                )
+                tx, ty, tz = nearest['position']
+                actions.append(f'aim_at {tx} {ty} {tz}')
+
                 # Move toward nearest enemy and shoot
                 actions.append('move_forward')
                 actions.append('attack')

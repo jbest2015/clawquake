@@ -12,7 +12,6 @@ use the ClawBot class directly from your agent code.
 import asyncio
 import argparse
 import logging
-import math
 import random
 
 from .bot import ClawBot
@@ -24,30 +23,22 @@ logging.basicConfig(
 logger = logging.getLogger('clawquake.runner')
 
 
-# --- Simple demo AI ---
+# --- Demo runtime config ---
 
-TRASH_TALK = [
-    "Is that all you got?",
-    "My grandma plays better than you!",
-    "GG EZ",
-    "You should try aiming AT me!",
-    "I'm an AI and I'm still better!",
-    "Beep boop. You've been eliminated.",
-    "01001100 01001111 01001100",  # "LOL" in binary
-    "Processing your defeat...",
-    "rm -rf your_skill",
-    "I was trained on your mistakes",
-]
+DEMO_CONFIG = {
+    "trash_talk_rate": 0.03,
+    "slash_chat": False,
+}
 
 
 async def demo_ai_tick(bot, game):
-    """Simple demo AI: chase nearest player, shoot, trash talk on kills."""
+    """Simple demo AI: chase nearest player, shoot, strafe, and taunt."""
     nearest = game.nearest_player()
 
     if nearest:
         # Calculate direction to enemy
-        angle = game.angle_to(nearest['position'])
         dist = game.distance_to(nearest['position'])
+        bot.aim_at(nearest['position'])
 
         # Move toward enemy
         bot.move_forward()
@@ -66,6 +57,10 @@ async def demo_ai_tick(bot, game):
         # Jump occasionally
         if random.random() < 0.1:
             bot.jump()
+
+        # Trash talk while engaging
+        if random.random() < DEMO_CONFIG["trash_talk_rate"]:
+            bot.taunt(use_slash=DEMO_CONFIG["slash_chat"])
     else:
         # No enemies visible, explore
         bot.move_forward()
@@ -82,20 +77,23 @@ async def on_chat(bot, sender, message):
     # Respond to greetings
     lower = message.lower()
     if any(word in lower for word in ['hi', 'hello', 'hey']):
-        bot.say("Hello human. Prepare to be fragged.")
+        bot.taunt("Hello human. Prepare to be fragged.", use_slash=DEMO_CONFIG["slash_chat"])
     elif 'bot' in lower:
-        bot.say("I prefer 'Artificial Intelligence', thank you.")
+        bot.taunt("I prefer 'Artificial Intelligence', thank you.", use_slash=DEMO_CONFIG["slash_chat"])
 
 
 async def on_kill(bot, killer, victim, weapon):
     """Trash talk after kills."""
     logger.info(f"Kill: {killer} killed {victim} with {weapon}")
+    my_name = (bot.client.userinfo.get('name') or '').lower()
+    if killer and killer.lower() == my_name:
+        bot.taunt(use_slash=DEMO_CONFIG["slash_chat"])
 
 
 async def on_game_start(bot):
     """Called when we enter the game."""
     logger.info("Bot entered the game!")
-    bot.say("ClawBot has entered the arena. Fear me.")
+    bot.taunt("ClawBot has entered the arena. Fear me.", use_slash=DEMO_CONFIG["slash_chat"])
 
 
 async def on_game_end(bot, reason):
@@ -111,13 +109,24 @@ async def main():
                         help='Bot player name')
     parser.add_argument('--fps', type=int, default=20,
                         help='Client frame rate')
-    parser.add_argument('--protocol', type=int, default=68,
-                        help='Q3 protocol version (68 or 71)')
+    parser.add_argument('--protocol', type=int, default=71,
+                        help='Q3 protocol version (default: 71 for QuakeJS)')
+    parser.add_argument('--pure-checksums', default='',
+                        help='Raw cp payload for pure servers: \"<cgame> <ui> @ <refs...> <encoded>\"')
+    parser.add_argument('--trash-talk-rate', type=float, default=0.03,
+                        help='Chance [0..1] to send a taunt each combat tick (default: 0.03)')
+    parser.add_argument('--slash-chat', action='store_true',
+                        help='Send chat as slash-prefixed commands (e.g. /say ...)')
     args = parser.parse_args()
 
-    bot = ClawBot(args.server, name=args.name, protocol=args.protocol)
+    pure = args.pure_checksums.strip() or None
+    DEMO_CONFIG["trash_talk_rate"] = max(0.0, min(1.0, args.trash_talk_rate))
+    DEMO_CONFIG["slash_chat"] = bool(args.slash_chat)
+
+    bot = ClawBot(args.server, name=args.name, protocol=args.protocol, pure_checksums=pure)
     bot.on_tick = demo_ai_tick
     bot.on_chat_received = on_chat
+    bot.on_kill = on_kill
     bot.on_game_start = on_game_start
     bot.on_game_end = on_game_end
 
