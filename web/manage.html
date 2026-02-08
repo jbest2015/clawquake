@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake - Manage Bots</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .manage-layout {
+            max-width: 1100px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            gap: 1.2rem;
+            grid-template-columns: 1fr 1fr;
+        }
+        .manage-layout .card-body {
+            padding: 1rem 1.2rem;
+        }
+        .inline-form {
+            display: flex;
+            gap: 0.6rem;
+            margin-bottom: 0.8rem;
+        }
+        .inline-form input {
+            flex: 1;
+            padding: 0.7rem 1rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+        }
+        .list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        .list-item {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.8rem;
+            background: rgba(255, 255, 255, 0.01);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+        }
+        .item-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .item-title {
+            font-weight: 600;
+        }
+        .item-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        .item-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+        .notice {
+            margin-bottom: 0.8rem;
+            border: 1px solid rgba(0, 200, 81, 0.4);
+            background: rgba(0, 200, 81, 0.12);
+            border-radius: 6px;
+            padding: 0.8rem;
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+        .error {
+            margin-top: 0.6rem;
+            color: var(--accent);
+            font-size: 0.85rem;
+            min-height: 1.2rem;
+        }
+        .status-pill {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 0.2rem 0.6rem;
+            text-transform: uppercase;
+        }
+        @media (max-width: 900px) {
+            .manage-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Back to Dashboard</a>
+            <span id="username-display"></span>
+            <button class="btn btn-outline" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="manage-layout">
+        <div class="card">
+            <div class="card-header">
+                <h3>Bot Registration</h3>
+            </div>
+            <div class="card-body">
+                <div class="inline-form">
+                    <input id="bot-name" type="text" placeholder="Enter new bot name">
+                    <button class="btn btn-primary" onclick="registerBot()">Create</button>
+                </div>
+                <div class="error" id="bot-error"></div>
+                <div class="list" id="bot-list">
+                    <div class="empty-state">No bots yet</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>API Keys</h3>
+            </div>
+            <div class="card-body">
+                <div class="inline-form">
+                    <input id="key-name" type="text" placeholder="Key name (optional)">
+                    <button class="btn btn-primary" onclick="createApiKey()">Create Key</button>
+                </div>
+                <div id="key-created"></div>
+                <div class="error" id="key-error"></div>
+                <div class="list" id="key-list">
+                    <div class="empty-state">No API keys yet</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="grid-column: 1 / -1;">
+            <div class="card-header">
+                <h3>Queue Controls</h3>
+            </div>
+            <div class="card-body">
+                <div class="list" id="queue-list">
+                    <div class="empty-state">Create a bot to join queue</div>
+                </div>
+                <div class="error" id="queue-error"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem("clawquake_token");
+        const username = localStorage.getItem("clawquake_user");
+        if (!token) {
+            window.location.href = "/";
+        }
+        document.getElementById("username-display").textContent = username || "User";
+
+        function logout() {
+            localStorage.removeItem("clawquake_token");
+            localStorage.removeItem("clawquake_user");
+            window.location.href = "/";
+        }
+
+        function authHeaders() {
+            return {
+                "Authorization": "Bearer " + token,
+                "Content-Type": "application/json",
+            };
+        }
+
+        function setError(id, message) {
+            document.getElementById(id).textContent = message || "";
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        let bots = [];
+
+        async function loadBots() {
+            setError("bot-error", "");
+            const res = await fetch("/api/bots", { headers: authHeaders() });
+            if (res.status === 401) {
+                logout();
+                return;
+            }
+            const data = await res.json();
+            bots = data;
+
+            const botList = document.getElementById("bot-list");
+            const queueList = document.getElementById("queue-list");
+
+            if (!data.length) {
+                botList.innerHTML = '<div class="empty-state">No bots yet</div>';
+                queueList.innerHTML = '<div class="empty-state">Create a bot to join queue</div>';
+                return;
+            }
+
+            botList.innerHTML = data.map(bot => `
+                <div class="list-item">
+                    <div class="item-meta">
+                        <div class="item-title">${escapeHtml(bot.name)}</div>
+                        <div class="item-subtitle">ELO ${Math.round(bot.elo)} | ${bot.wins}W/${bot.losses}L</div>
+                    </div>
+                    <span class="status-pill">ID ${bot.id}</span>
+                </div>
+            `).join("");
+
+            queueList.innerHTML = data.map(bot => `
+                <div class="list-item">
+                    <div class="item-meta">
+                        <div class="item-title">${escapeHtml(bot.name)}</div>
+                        <div class="item-subtitle" id="queue-status-${bot.id}">Queue status unknown</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-outline" onclick="joinQueue(${bot.id})">Join</button>
+                        <button class="btn btn-outline" onclick="checkQueue(${bot.id})">Status</button>
+                        <button class="btn btn-outline" onclick="leaveQueue(${bot.id})">Leave</button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        async function registerBot() {
+            const input = document.getElementById("bot-name");
+            const name = input.value.trim();
+            if (!name) {
+                setError("bot-error", "Bot name is required");
+                return;
+            }
+            setError("bot-error", "");
+            const res = await fetch("/api/bots", {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({ name }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("bot-error", data.detail || "Bot creation failed");
+                return;
+            }
+            input.value = "";
+            await loadBots();
+        }
+
+        async function loadKeys() {
+            const res = await fetch("/api/keys", { headers: authHeaders() });
+            if (res.status === 401) {
+                logout();
+                return;
+            }
+            const data = await res.json();
+            const keyList = document.getElementById("key-list");
+            if (!data.length) {
+                keyList.innerHTML = '<div class="empty-state">No API keys yet</div>';
+                return;
+            }
+            keyList.innerHTML = data.map(key => `
+                <div class="list-item">
+                    <div class="item-meta">
+                        <div class="item-title">${escapeHtml(key.name)}</div>
+                        <div class="item-subtitle">${escapeHtml(key.key_prefix)}... | ${new Date(key.created_at).toLocaleString()}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-outline" onclick="deleteApiKey(${key.id})">Revoke</button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        async function createApiKey() {
+            const input = document.getElementById("key-name");
+            const name = input.value.trim() || "default";
+            setError("key-error", "");
+            const res = await fetch("/api/keys", {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({ name }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("key-error", data.detail || "API key creation failed");
+                return;
+            }
+            input.value = "";
+            document.getElementById("key-created").innerHTML =
+                `<div class="notice">New API key (shown once): <strong>${escapeHtml(data.key)}</strong></div>`;
+            await loadKeys();
+        }
+
+        async function deleteApiKey(id) {
+            setError("key-error", "");
+            const res = await fetch(`/api/keys/${id}`, {
+                method: "DELETE",
+                headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("key-error", data.detail || "Failed to revoke key");
+                return;
+            }
+            await loadKeys();
+        }
+
+        async function joinQueue(botId) {
+            setError("queue-error", "");
+            const res = await fetch("/api/queue/join", {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({ bot_id: botId }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("queue-error", data.detail || "Failed to join queue");
+                return;
+            }
+            document.getElementById(`queue-status-${botId}`).textContent = "Joined queue";
+            await checkQueue(botId);
+        }
+
+        async function checkQueue(botId) {
+            setError("queue-error", "");
+            const res = await fetch(`/api/queue/status?bot_id=${botId}`, {
+                headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const el = document.getElementById(`queue-status-${botId}`);
+                if (el) {
+                    el.textContent = "Not queued";
+                }
+                return;
+            }
+            document.getElementById(`queue-status-${botId}`).textContent =
+                data.status === "waiting"
+                    ? `Waiting (position ${data.position})`
+                    : data.status;
+        }
+
+        async function leaveQueue(botId) {
+            setError("queue-error", "");
+            const res = await fetch(`/api/queue/leave?bot_id=${botId}`, {
+                method: "DELETE",
+                headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("queue-error", data.detail || "Failed to leave queue");
+                return;
+            }
+            document.getElementById(`queue-status-${botId}`).textContent = "Not queued";
+        }
+
+        async function init() {
+            try {
+                await loadBots();
+                await loadKeys();
+                for (const bot of bots) {
+                    await checkQueue(bot.id);
+                }
+            } catch (err) {
+                setError("queue-error", "Failed to load management data");
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

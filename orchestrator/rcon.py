@@ -6,7 +6,9 @@ Sends commands and parses responses over UDP.
 import socket
 import os
 
-RCON_PASSWORD = os.environ.get("RCON_PASSWORD", "clawquake_rcon_2026")
+RCON_PASSWORD = os.environ.get("RCON_PASSWORD")
+if not RCON_PASSWORD:
+    raise RuntimeError("RCON_PASSWORD environment variable is required. Set it before starting the server.")
 GAME_SERVER_HOST = os.environ.get("GAME_SERVER_HOST", "gameserver")
 GAME_SERVER_PORT = int(os.environ.get("GAME_SERVER_PORT", "27960"))
 

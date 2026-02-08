@@ -101,5 +101,109 @@ class ServerStatus(BaseModel):
     timelimit: int
 
 
+# ── Queue & Match Participant Models (Claude — Batch 1) ──────
+
+class QueueEntryDB(Base):
+    __tablename__ = "queue"
+    id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(Integer, nullable=False)   # FK to bots.id
+    user_id = Column(Integer, nullable=False)   # FK to users.id
+    queued_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="waiting")  # waiting | matched | playing | done
+
+
+class MatchParticipantDB(Base):
+    __tablename__ = "match_participants"
+    id = Column(Integer, primary_key=True, index=True)
+    match_id = Column(Integer, nullable=False)  # FK to matches.id
+    bot_id = Column(Integer, nullable=False)    # FK to bots.id
+    kills = Column(Integer, default=0)
+    deaths = Column(Integer, default=0)
+    score = Column(Integer, default=0)
+    elo_before = Column(Float, default=1000.0)
+    elo_after = Column(Float, default=1000.0)
+
+
+# ── Queue & Match Pydantic Schemas ───────────────────────────
+
+class QueueJoin(BaseModel):
+    bot_id: int
+
+
+class QueueStatus(BaseModel):
+    position: int
+    bot_name: str
+    status: str
+    queued_at: datetime
+
+
+class MatchResultReport(BaseModel):
+    """Internal: bot reports its match results."""
+    match_id: int
+    bot_name: str
+    bot_id: int
+    kills: int
+    deaths: int
+    duration_seconds: float
+    strategy_name: str = ""
+    strategy_version: str = ""
+
+
+class MatchDetailResponse(BaseModel):
+    id: int
+    map_name: str
+    gametype: str
+    started_at: datetime
+    ended_at: Optional[datetime]
+    winner: Optional[str]
+    duration_seconds: Optional[float] = None
+    participants: list[dict] = []
+
+
 # Create tables
+Base.metadata.create_all(bind=engine)
+
+
+# ── API Key Models (Codex — Batch 1) ───────────────────────────
+
+class ApiKeyDB(Base):
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    name = Column(String, nullable=False, default="default")
+    key_hash = Column(String, nullable=False, unique=True, index=True)
+    key_prefix = Column(String, nullable=False, default="cq_")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used = Column(DateTime, nullable=True)
+    is_active = Column(Integer, default=1)
+
+
+# ── API Key & Bot Registration Schemas ──────────────────────────
+
+class ApiKeyCreate(BaseModel):
+    name: str = "default"
+
+
+class ApiKeyResponse(BaseModel):
+    id: int
+    name: str
+    key_prefix: str
+    created_at: datetime
+    last_used: Optional[datetime]
+    is_active: bool
+
+
+class ApiKeyCreated(BaseModel):
+    id: int
+    name: str
+    key: str
+    key_prefix: str
+    created_at: datetime
+
+
+class BotRegister(BaseModel):
+    name: str
+
+
+# Ensure appended models are included even if create_all above already ran.
 Base.metadata.create_all(bind=engine)

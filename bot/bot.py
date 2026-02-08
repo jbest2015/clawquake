@@ -19,6 +19,7 @@ import time
 
 from .client import Q3Client
 from .defs import weapon_t
+from .kill_tracker import KillTracker
 
 logger = logging.getLogger('clawquake.bot')
 
@@ -208,6 +209,7 @@ class ClawBot:
         self._action_queue = []
         self._chat_log = []
         self._kill_log = []
+        self.kill_tracker = KillTracker(name)
 
         # Wire up client callbacks
         self.client.on_snapshot = self._on_snapshot
@@ -357,63 +359,16 @@ class ClawBot:
     async def _on_command(self, client, seq, text):
         """Called for each server command."""
         # Detect kill events from print commands
-        if text.startswith("print "):
-            # Extract message content (strip "print " prefix and quotes)
-            msg = text[6:].strip('"').strip()
-            # Strip Q3 newline markers and color codes
-            msg = msg.replace('\\n', '').replace('\n', '').strip()
-            # Strip Q3 color codes (^0 through ^9, ^x)
-            import re as _re
-            clean = _re.sub(r'\^[0-9a-zA-Z]', '', msg).strip()
-
-            if ' was ' in clean or ' killed ' in clean or ' almost dodged ' in clean:
-                logger.info(f"KILL_MSG: raw='{msg}' clean='{clean}'")
-                self._kill_log.append({
-                    'time': time.time(),
-                    'message': clean,
-                })
-                parsed = self._parse_kill_message(clean)
-                if parsed and self.on_kill:
-                    killer, victim, weapon = parsed
-                    logger.info(f"KILL_EVENT: {killer} killed {victim} with {weapon}")
-                    await self.on_kill(self, killer, victim, weapon)
-
-    @staticmethod
-    def _parse_kill_message(message):
-        """
-        Parse Q3 obituary text into (killer, victim, weapon).
-        
-        Uses regex to handle various patterns:
-        - "Victim was railgunned by Killer"
-        - "Victim was melted by Killer's plasmagun"
-        - "Victim almost dodged Killer's rocket"
-        """
-        # Common Q3 kill patterns
-        # 1. "Victim was <action> by Killer"
-        # 2. "Victim was <action> by Killer's <weapon>"
-        # 3. "Victim almost dodged Killer's <weapon>"
-        
-        # Regex for "by Killer" patterns
-        # Matches: "PlayerA was railgunned by PlayerB"
-        match = re.search(r"(.+) was .+ by (.+)'s (.+)", message)
-        if match:
-            return match.group(2), match.group(1), match.group(3)
-
-        match = re.search(r"(.+) was .+ by (.+)", message)
-        if match:
-            return match.group(2), match.group(1), "unknown"
-            
-        # Matches: "PlayerA almost dodged PlayerB's rocket"
-        match = re.search(r"(.+) almost dodged (.+)'s (.+)", message)
-        if match:
-            return match.group(2), match.group(1), match.group(3)
-            
-        # Matches: "PlayerA killed PlayerB" (less common in Q3 but possible in mods)
-        match = re.search(r"(.+) killed (.+)", message)
-        if match:
-            return match.group(1), match.group(2), "unknown"
-
-        return None
+        parsed = self.kill_tracker.parse_server_command(text)
+        if parsed:
+            killer, victim, weapon = parsed
+            logger.info(f"KILL_EVENT: {killer} killed {victim} with {weapon}")
+            self._kill_log.append({
+                'time': time.time(),
+                'message': f"{killer} killed {victim} with {weapon}",
+            })
+            if self.on_kill:
+                await self.on_kill(self, killer, victim, weapon)
 
     # --- State queries ---
 

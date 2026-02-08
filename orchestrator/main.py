@@ -4,9 +4,10 @@ ClawQuake Orchestrator — FastAPI service for auth, match control, and leaderbo
 
 import json
 import logging
+import os
 from datetime import datetime
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -16,10 +17,14 @@ from auth import (
     create_access_token, get_current_user, require_admin,
 )
 from models import (
-    UserDB, MatchDB, BotDB,
+    UserDB, MatchDB, BotDB, MatchParticipantDB,
     UserCreate, UserLogin, UserResponse, TokenResponse,
     MatchResponse, BotResponse, ServerStatus,
+    MatchResultReport, MatchDetailResponse,
 )
+from routes_bots import router as bots_router
+from routes_keys import router as keys_router
+from routes_queue import router as queue_router
 from rcon import get_server_status, add_bot, change_map, server_say, send_rcon
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +39,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(bots_router)
+app.include_router(keys_router)
+app.include_router(queue_router)
 
 
 # ── Auth Endpoints ──────────────────────────────────────────────
@@ -179,6 +188,91 @@ def admin_rcon(command: str, admin: UserDB = Depends(require_admin)):
     return {"result": result}
 
 
+# ── Internal: Match Reporting (Claude — Batch 1) ──────────────
+
+INTERNAL_SECRET = os.environ.get("INTERNAL_SECRET", "")
+
+
+@app.post("/api/internal/match/report")
+def internal_match_report(
+    report: MatchResultReport,
+    x_internal_secret: str = Header(..., alias="X-Internal-Secret"),
+    db: Session = Depends(get_db),
+):
+    """Bot agent_runner POSTs results here after a round ends."""
+    if not INTERNAL_SECRET or x_internal_secret != INTERNAL_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid internal secret")
+
+    # Find the participant record and update it
+    participant = (
+        db.query(MatchParticipantDB)
+        .filter(
+            MatchParticipantDB.match_id == report.match_id,
+            MatchParticipantDB.bot_id == report.bot_id,
+        )
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Match participant not found")
+
+    participant.kills = report.kills
+    participant.deaths = report.deaths
+    participant.score = report.kills - report.deaths
+    db.commit()
+
+    logger.info(
+        f"Match {report.match_id}: {report.bot_name} reported "
+        f"K={report.kills} D={report.deaths}"
+    )
+    return {"ok": True}
+
+
+@app.get("/api/matches/{match_id}")
+def get_match_detail(
+    match_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get match details with all participants."""
+    match = db.query(MatchDB).filter(MatchDB.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    participants = (
+        db.query(MatchParticipantDB)
+        .filter(MatchParticipantDB.match_id == match_id)
+        .all()
+    )
+
+    participant_data = []
+    for p in participants:
+        bot = db.query(BotDB).filter(BotDB.id == p.bot_id).first()
+        participant_data.append({
+            "bot_id": p.bot_id,
+            "bot_name": bot.name if bot else "unknown",
+            "kills": p.kills,
+            "deaths": p.deaths,
+            "score": p.score,
+            "elo_before": p.elo_before,
+            "elo_after": p.elo_after,
+            "elo_change": round(p.elo_after - p.elo_before, 2),
+        })
+
+    duration = None
+    if match.ended_at and match.started_at:
+        duration = (match.ended_at - match.started_at).total_seconds()
+
+    return MatchDetailResponse(
+        id=match.id,
+        map_name=match.map_name,
+        gametype=match.gametype,
+        started_at=match.started_at,
+        ended_at=match.ended_at,
+        winner=match.winner,
+        duration_seconds=duration,
+        participants=participant_data,
+    )
+
+
 # ── Health ──────────────────────────────────────────────────────
 
 @app.get("/api/health")
@@ -188,7 +282,6 @@ def health():
 
 # ── Static Files (must be last — catch-all) ─────────────────────
 
-import os
 STATIC_DIR = os.environ.get("STATIC_DIR", "/app/static")
 if os.path.isdir(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

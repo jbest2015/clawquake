@@ -50,6 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bot.agent import ClawQuakeAgent
 from bot.strategy import StrategyLoader
+from bot.result_reporter import ResultReporter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -222,6 +223,23 @@ async def run(args):
         print(json.dumps(results, indent=2))
         print("=== END RESULTS ===")
 
+        # Report to orchestrator if configured
+        if args.orchestrator_url:
+            if not args.match_id or not args.internal_secret:
+                logger.error("Missing match-id or internal-secret for reporting!")
+            else:
+                logger.info("Reporting results to orchestrator...")
+                reporter = ResultReporter(args.orchestrator_url, args.internal_secret)
+                ok = reporter.report_match_result(
+                    args.match_id,
+                    args.bot_id,
+                    results
+                )
+                if ok:
+                    logger.info("Results successfully reported.")
+                else:
+                    logger.error("Failed to report results.")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -247,6 +265,16 @@ Examples:
                         help='Path to write JSON results file')
     parser.add_argument('--fps', type=int, default=20,
                         help='Client frame rate (default: 20)')
+    # Orchestrator / Reporting args
+    parser.add_argument('--match-id', default=None,
+                        help='Match ID (for orchestrator reporting)')
+    parser.add_argument('--bot-id', type=int, default=0,
+                        help='Bot ID (for orchestrator reporting)')
+    parser.add_argument('--orchestrator-url', default=None,
+                        help='Orchestrator URL (e.g. http://localhost:8000)')
+    parser.add_argument('--internal-secret', default=None,
+                        help='Internal secret for reporting results')
+
     args = parser.parse_args()
 
     asyncio.run(run(args))
