@@ -50,7 +50,17 @@ class PlayerState:
 
     @property
     def health(self):
+        # Q3 stores health in stats[STAT_HEALTH] (index 0)
+        if self.stats and len(self.stats) > 0:
+            return self.stats[0]
         return self.fields.get('generic1', 0)
+
+    @property
+    def armor(self):
+        # Q3 stores armor in stats[STAT_ARMOR] (index 6)
+        if self.stats and len(self.stats) > 6:
+            return self.stats[6]
+        return 0
 
     @property
     def weapon(self):

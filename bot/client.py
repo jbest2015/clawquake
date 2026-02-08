@@ -603,6 +603,9 @@ class Q3Client:
 
     async def _handle_server_command(self, seq, text):
         """Handle a server command."""
+        # Log print commands (contains kill messages, player events)
+        if text.startswith("print "):
+            logger.info(f"SERVER_PRINT: {text[6:120]}")
         if self.on_command:
             await self.on_command(self, seq, text)
 

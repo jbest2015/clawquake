@@ -356,19 +356,26 @@ class ClawBot:
 
     async def _on_command(self, client, seq, text):
         """Called for each server command."""
-        # Detect kill events (obituary)
-        if text.startswith("print ") and "\\n" in text:
-            # Kill messages look like: print "PlayerA was railgunned by PlayerB\n"
-            msg = text.split('"')[1] if '"' in text else text[6:]
-            msg = msg.strip('\\n').strip()
-            if ' was ' in msg or ' killed ' in msg:
+        # Detect kill events from print commands
+        if text.startswith("print "):
+            # Extract message content (strip "print " prefix and quotes)
+            msg = text[6:].strip('"').strip()
+            # Strip Q3 newline markers and color codes
+            msg = msg.replace('\\n', '').replace('\n', '').strip()
+            # Strip Q3 color codes (^0 through ^9, ^x)
+            import re as _re
+            clean = _re.sub(r'\^[0-9a-zA-Z]', '', msg).strip()
+
+            if ' was ' in clean or ' killed ' in clean or ' almost dodged ' in clean:
+                logger.info(f"KILL_MSG: raw='{msg}' clean='{clean}'")
                 self._kill_log.append({
                     'time': time.time(),
-                    'message': msg,
+                    'message': clean,
                 })
-                parsed = self._parse_kill_message(msg)
+                parsed = self._parse_kill_message(clean)
                 if parsed and self.on_kill:
                     killer, victim, weapon = parsed
+                    logger.info(f"KILL_EVENT: {killer} killed {victim} with {weapon}")
                     await self.on_kill(self, killer, victim, weapon)
 
     @staticmethod
