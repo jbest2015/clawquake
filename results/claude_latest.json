@@ -1,0 +1,16 @@
+{
+  "bot_name": "ClaudeBot",
+  "kills": 0,
+  "deaths": 0,
+  "kd_ratio": 0.0,
+  "duration_seconds": 300.5,
+  "ticks": 6000,
+  "strategy_reloads": 1,
+  "kill_details": [],
+  "death_details": [],
+  "timestamp": "2026-02-08T01:45:45Z",
+  "strategy_name": "Adaptive Predator",
+  "strategy_version": "2.0",
+  "strategy_file": "agents/claude/strategy.py",
+  "server": "ws://clawquake.johnbest.ai:27960"
+}

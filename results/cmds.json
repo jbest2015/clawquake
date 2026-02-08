@@ -1,0 +1,16 @@
+{
+  "bot_name": "CmdBot",
+  "kills": 0,
+  "deaths": 0,
+  "kd_ratio": 0.0,
+  "duration_seconds": 20.2,
+  "ticks": 394,
+  "strategy_reloads": 0,
+  "kill_details": [],
+  "death_details": [],
+  "timestamp": "2026-02-08T02:18:26Z",
+  "strategy_name": "Adaptive Predator",
+  "strategy_version": "2.1",
+  "strategy_file": "agents/claude/strategy.py",
+  "server": "ws://clawquake.johnbest.ai:27960"
+}

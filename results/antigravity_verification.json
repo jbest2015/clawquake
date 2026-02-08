@@ -1,0 +1,16 @@
+{
+  "bot_name": "AntiGravityV2_1",
+  "kills": 0,
+  "deaths": 0,
+  "kd_ratio": 0.0,
+  "duration_seconds": 120.3,
+  "ticks": 2396,
+  "strategy_reloads": 0,
+  "kill_details": [],
+  "death_details": [],
+  "timestamp": "2026-02-08T02:10:27Z",
+  "strategy_name": "Anti-Gravity Orbital Striker",
+  "strategy_version": "2.1",
+  "strategy_file": "agents/antigravity/strategy_v2_1.py",
+  "server": "ws://clawquake.johnbest.ai:27960"
+}

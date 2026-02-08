@@ -1,0 +1,16 @@
+{
+  "bot_name": "AntiGravityPredator",
+  "kills": 0,
+  "deaths": 0,
+  "kd_ratio": 0.0,
+  "duration_seconds": 300.5,
+  "ticks": 6000,
+  "strategy_reloads": 0,
+  "kill_details": [],
+  "death_details": [],
+  "timestamp": "2026-02-08T02:25:13Z",
+  "strategy_name": "Anti-Gravity Predator",
+  "strategy_version": "2.2",
+  "strategy_file": "agents/antigravity/strategy_v2_2.py",
+  "server": "ws://clawquake.johnbest.ai:27960"
+}
