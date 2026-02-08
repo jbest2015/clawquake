@@ -86,7 +86,7 @@ async def tick(bot, game, ctx):
         players = game.players if hasattr(game, 'players') else []
         _log(f"TICK={ctx.tick_count} hp={health} pos={my_pos} "
              f"players_visible={len(players)} falling={ctx.falling} "
-             f"aggression={ctx.aggression}")
+             f"aggression={ctx.aggression} explore_timer={ctx.explore_walk_timer}/{ctx.explore_walk_max}")
 
     if not nearest:
         # --- SAFE SEARCH MODE ---

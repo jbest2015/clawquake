@@ -436,9 +436,13 @@ class Q3Client:
         """Process a parsed server frame: update state, handle events, fire callbacks."""
         self.reliable_ack = frame.reliable_ack
 
-        # Handle gamestate (initial connect)
+        # Handle gamestate (initial connect or map change)
         if frame.config_strings and frame.client_num >= 0:
             self._load_gamestate(frame)
+            # Reset to CA_CONNECTED so the begin transition fires below
+            if self.state.value > connstate_t.CA_CONNECTED.value:
+                logger.info("New gamestate received mid-game, resetting to CA_CONNECTED")
+                self.state = connstate_t.CA_CONNECTED
 
         # Handle commands
         for seq, text in frame.commands:
@@ -466,11 +470,9 @@ class Q3Client:
         if self.state == connstate_t.CA_CONNECTED and frame.config_strings and frame.client_num >= 0:
             self.state = connstate_t.CA_PRIMED
             logger.info(f"Gamestate received, primed (client_num={self.client_num})")
-            if not self._begin_sent:
-                # Q3 requires explicit begin after gamestate to transition to live snapshots.
-                self.queue_command(f"begin {self.server_id}")
-                self._begin_sent = True
-                logger.info(f"Sent begin for server_id={self.server_id}")
+            # Q3 requires "begin" after every gamestate (initial connect AND map restarts).
+            self.queue_command(f"begin {self.server_id}")
+            logger.info(f"Sent begin for server_id={self.server_id}")
         # CA_PRIMED -> CA_ACTIVE: after receiving first snapshot post-gamestate
         if self.state == connstate_t.CA_PRIMED and frame.snapshot:
             self.state = connstate_t.CA_ACTIVE
