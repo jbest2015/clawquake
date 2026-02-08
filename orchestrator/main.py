@@ -2,12 +2,15 @@
 ClawQuake Orchestrator — FastAPI service for auth, match control, and leaderboards.
 """
 
+import asyncio
 import json
 import logging
 import os
+from contextlib import suppress
 from datetime import datetime
+from queue import SimpleQueue
 
-from fastapi import FastAPI, Depends, Header, HTTPException
+from fastapi import FastAPI, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -17,7 +20,7 @@ from auth import (
     create_access_token, get_current_user, require_admin,
 )
 from models import (
-    UserDB, MatchDB, BotDB, MatchParticipantDB,
+    UserDB, MatchDB, BotDB, MatchParticipantDB, QueueEntryDB, SessionLocal,
     UserCreate, UserLogin, UserResponse, TokenResponse,
     MatchResponse, BotResponse, ServerStatus,
     MatchResultReport, MatchDetailResponse,
@@ -29,6 +32,7 @@ from rcon import get_server_status, add_bot, change_map, server_say, send_rcon
 from rcon_pool import RconPool
 from process_manager import BotProcessManager
 from matchmaker import MatchMaker
+from websocket_hub import WebSocketHub
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawquake")
@@ -68,6 +72,9 @@ matchmaker = MatchMaker(
     process_manager=process_manager,
     rcon_pool=rcon_pool,
 )
+websocket_hub = WebSocketHub()
+event_queue: SimpleQueue[tuple[str, dict]] = SimpleQueue()
+websocket_publisher_task: asyncio.Task | None = None
 
 
 app = FastAPI(title="ClawQuake Orchestrator", version="0.2.0")
@@ -83,6 +90,108 @@ app.add_middleware(
 app.include_router(bots_router)
 app.include_router(keys_router)
 app.include_router(queue_router)
+
+
+def _status_payload() -> dict:
+    """Current server status payload used by HTTP and WebSocket paths."""
+    data = get_server_status()
+    if not data["online"]:
+        return {"online": False, "message": "Game server offline"}
+
+    info = data.get("info", {})
+    return {
+        "online": True,
+        "map_name": info.get("mapname", "unknown"),
+        "hostname": info.get("sv_hostname", "ClawQuake Arena"),
+        "gametype": info.get("g_gametype", "0"),
+        "fraglimit": info.get("fraglimit", "50"),
+        "timelimit": info.get("timelimit", "15"),
+        "players": data.get("players", []),
+        "player_count": len(data.get("players", [])),
+        "max_clients": info.get("sv_maxclients", "16"),
+    }
+
+
+def _queue_payload() -> dict:
+    """Queue and active match summary for live clients."""
+    db = SessionLocal()
+    try:
+        waiting = db.query(BotDB).count()
+        waiting_entries = (
+            db.query(QueueEntryDB)
+            .filter(QueueEntryDB.status == "waiting")
+            .count()
+        )
+        active = process_manager.active_matches()
+        return {
+            "waiting_entries": int(waiting_entries),
+            "registered_bots": int(waiting),
+            "active_match_count": len(active),
+            "active_matches": active,
+        }
+    finally:
+        db.close()
+
+
+async def _websocket_publish_loop():
+    """Pushes live status/queue updates and queued events to connected clients."""
+    previous_active: set[int] = set()
+    while True:
+        if websocket_hub.connection_count == 0:
+            await asyncio.sleep(1.0)
+            continue
+
+        # Drain queued events first.
+        while not event_queue.empty():
+            event_type, payload = event_queue.get_nowait()
+            await websocket_hub.broadcast(event_type, payload)
+
+        queue_data = _queue_payload()
+        await websocket_hub.broadcast("status_update", _status_payload())
+        await websocket_hub.broadcast("queue_update", queue_data)
+
+        active_ids = {int(m.get("match_id")) for m in queue_data["active_matches"] if "match_id" in m}
+        started = active_ids - previous_active
+        ended = previous_active - active_ids
+        for match_id in started:
+            await websocket_hub.broadcast("match_started", {"match_id": match_id})
+        for match_id in ended:
+            await websocket_hub.broadcast("match_ended", {"match_id": match_id})
+        previous_active = active_ids
+
+        await asyncio.sleep(3.0)
+
+
+@app.on_event("startup")
+async def _startup_websocket_publisher():
+    global websocket_publisher_task
+    if websocket_publisher_task is None or websocket_publisher_task.done():
+        websocket_publisher_task = asyncio.create_task(_websocket_publish_loop())
+
+
+@app.on_event("shutdown")
+async def _shutdown_websocket_publisher():
+    global websocket_publisher_task
+    if websocket_publisher_task:
+        websocket_publisher_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await websocket_publisher_task
+        websocket_publisher_task = None
+
+
+@app.websocket("/ws/events")
+async def websocket_events(ws: WebSocket):
+    await websocket_hub.connect(ws)
+    await ws.send_json({"event_type": "connected", "data": {"ok": True}})
+    try:
+        while True:
+            msg = await ws.receive_text()
+            if msg.lower() == "ping":
+                await ws.send_json({"event_type": "pong", "data": {"ok": True}})
+    except WebSocketDisconnect:
+        await websocket_hub.disconnect(ws)
+    except Exception:
+        await websocket_hub.disconnect(ws)
 
 
 # ── Auth Endpoints ──────────────────────────────────────────────
@@ -135,22 +244,7 @@ def me(user: UserDB = Depends(get_current_user)):
 @app.get("/api/status")
 def status():
     """Current server status — public endpoint."""
-    data = get_server_status()
-    if not data["online"]:
-        return {"online": False, "message": "Game server offline"}
-
-    info = data.get("info", {})
-    return {
-        "online": True,
-        "map_name": info.get("mapname", "unknown"),
-        "hostname": info.get("sv_hostname", "ClawQuake Arena"),
-        "gametype": info.get("g_gametype", "0"),
-        "fraglimit": info.get("fraglimit", "50"),
-        "timelimit": info.get("timelimit", "15"),
-        "players": data.get("players", []),
-        "player_count": len(data.get("players", [])),
-        "max_clients": info.get("sv_maxclients", "16"),
-    }
+    return _status_payload()
 
 
 # ── Leaderboard ─────────────────────────────────────────────────
@@ -278,6 +372,16 @@ def internal_match_report(
         f"Match {report.match_id}: {report.bot_name} reported "
         f"K={report.kills} D={report.deaths}"
     )
+    event_queue.put((
+        "kill_event",
+        {
+            "match_id": report.match_id,
+            "bot_id": report.bot_id,
+            "bot_name": report.bot_name,
+            "kills": report.kills,
+            "deaths": report.deaths,
+        },
+    ))
     return {"ok": True}
 
 

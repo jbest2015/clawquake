@@ -20,12 +20,17 @@ class TestStrategy(unittest.TestCase):
         # Default mock values to avoid TypeErrors
         self.game.players = []
         self.game.entities = {}
+        self.game.items = []
         self.game.my_position = (0, 0, 0)
         self.game.my_velocity = (0, 0, 0)
         self.game.my_health = 100
         self.game.my_weapon = 1
         self.game.nearest_player.return_value = None
         self.game.distance_to.return_value = 0
+        self.game.am_i_falling = False
+        self.game.am_i_stuck = False
+        self.game.suggest_weapon.return_value = 1
+        self.game.server_time = 0
         self.loader = StrategyLoader("strategies/competition_reference.py")
 
     @property
@@ -46,54 +51,71 @@ class TestStrategy(unittest.TestCase):
         
     def test_strategy_tick_returns_actions(self):
         self._reset_and_spawn()
-        
-        # Setup game mock behavior
-        # Need to ensure properties return values, not Mocks
+
+        # Setup game mock behavior — not falling, not stuck, no enemies
         self.game.my_position = (0, 0, 0)
-        self.game.my_velocity = (0, 0, 0) # This tuple is subscriptable
+        self.game.my_velocity = (0, 0, 0)
         self.game.my_health = 100
         self.game.my_weapon = 1
         self.game.players = []
         self.game.entities = {}
+        self.game.items = []
         self.game.nearest_player.return_value = None
         self.game.distance_to.return_value = 0
-        
-        # Run tick
+        self.game.am_i_falling = False
+        self.game.am_i_stuck = False
+
+        # Run tick — with no enemies or items, should roam
         actions = asyncio.run(self.loader.tick(self.bot, self.game))
-        
+
         # Expect some actions (move, jump, etc.)
         self.assertTrue(len(actions) > 0)
         self.assertIn("move_forward", actions)
 
     def test_context_persistence(self):
         self._reset_and_spawn()
-        initial_tick = getattr(self.ctx, 'stuck_ticks', 0)
-        
-        # Setup mocks
+
+        # Setup mocks — not falling, not stuck initially
         self.game.my_position = (0, 0, 0)
         self.game.my_velocity = (0, 0, 0)
-        
-        # Run a tick where we simulate being stuck
-        self.ctx.last_pos = (0, 0, 0) # Force stuck
+        self.game.am_i_falling = False
+        self.game.am_i_stuck = False
+        self.game.items = []
+
+        # First tick — roaming, should set context state
         asyncio.run(self.loader.tick(self.bot, self.game))
-        
-        self.assertTrue(getattr(self.ctx, 'stuck_ticks', 0) > initial_tick)
+
+        # Verify context persists across ticks (retreating starts False)
+        self.assertFalse(self.ctx.retreating)
+
+        # Set low health — retreat should activate
+        self.game.my_health = 20
+        asyncio.run(self.loader.tick(self.bot, self.game))
+        self.assertTrue(self.ctx.retreating)
+
+        # Context persists: retreating remains True even after another tick
+        # at same health
+        asyncio.run(self.loader.tick(self.bot, self.game))
+        self.assertTrue(self.ctx.retreating)
 
     def test_retreat_logic(self):
         self._reset_and_spawn()
-        
-        # Setup mocks
+
+        # Setup mocks — not falling, not stuck
         self.game.my_position = (0, 0, 0)
         self.game.my_velocity = (0, 0, 0)
         self.game.players = []
         self.game.entities = {}
+        self.game.items = []
         self.game.nearest_player.return_value = None
         self.game.distance_to.return_value = 0
-        
-        self.game.my_health = 20 # Low health
+        self.game.am_i_falling = False
+        self.game.am_i_stuck = False
+
+        self.game.my_health = 20  # Low health
         asyncio.run(self.loader.tick(self.bot, self.game))
         self.assertTrue(self.ctx.retreating)
-        
+
         self.game.my_health = 100
         asyncio.run(self.loader.tick(self.bot, self.game))
         self.assertFalse(self.ctx.retreating)

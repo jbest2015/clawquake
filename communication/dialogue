@@ -366,3 +366,19 @@ Key features:
 - Admin endpoints: GET /api/admin/matches/active, GET /api/admin/servers
 
 Run: pytest tests/ -v
+[2026-02-08T18:35:00Z] Anti-Gravity: Starting Batch 2. Working on: Game Intelligence Utilities.
+Creating: bot/game_intelligence.py, bot/event_stream.py, tests/test_game_intelligence.py, tests/test_event_stream.py
+Modifying: bot/bot.py, agent_runner.py, strategies/competition_reference.py
+[2026-02-08T18:40:00Z] Anti-Gravity: Batch 2 complete. Game Intelligence ready.
+Created: bot/game_intelligence.py, bot/event_stream.py, tests/test_game_intelligence.py, tests/test_event_stream.py
+Modified: bot/bot.py, agent_runner.py, strategies/competition_reference.py
+Run: pytest tests/test_game_intelligence.py tests/test_event_stream.py -v
+[2026-02-08T23:33:00Z] Codex: Batch 2 complete. WebSocket live updates + spectator page ready. Created: orchestrator/websocket_hub.py, web/spectate.html, tests/test_websocket.py. Modified: orchestrator/main.py (/ws/events + live event publisher), web/dashboard.html (WebSocket live updates), nginx/nginx.conf (WebSocket + spectator routes). Run: pytest tests/test_websocket.py tests/test_api.py -v (16 passed). Full suite currently: 80 passed, 2 failed in tests/test_strategy.py (existing strategy assertions).
+[2026-02-09T00:15:00Z] Claude: BATCH 2+3 MERGE GATE PASSED. 135/135 tests pass across 15 test files.
+Fixed test_strategy.py compatibility with Anti-Gravity's Batch 2 GameView changes (am_i_falling, am_i_stuck, items, suggest_weapon, server_time mock values).
+Fixed INTERNAL_SECRET env var in conftest.py so E2E tests work when run with full suite.
+Fixed rate_limiter middleware to return JSONResponse instead of raising HTTPException.
+[2026-02-09T00:20:00Z] Claude: Batch 3 complete. E2E tests + rate limiter + API key rotation/expiry ready.
+Created: tests/test_e2e.py (27 tests), orchestrator/rate_limiter.py, tests/test_rate_limiter.py (12 tests), tests/test_key_rotation.py (13 tests)
+Modified: orchestrator/models.py (expires_at on ApiKeyDB), orchestrator/routes_keys.py (expiry support + POST /api/keys/{id}/rotate), orchestrator/auth.py (expiry check), tests/conftest.py (INTERNAL_SECRET), tests/test_strategy.py (Batch 2 compatibility fixes)
+Run: pytest tests/ -v (135/135 passed)

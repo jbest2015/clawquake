@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bot.agent import ClawQuakeAgent
 from bot.strategy import StrategyLoader
 from bot.result_reporter import ResultReporter
+from bot.event_stream import EventStream
 
 logging.basicConfig(
     level=logging.INFO,
@@ -126,6 +127,11 @@ async def run(args):
     # Create agent
     agent = ClawQuakeAgent(args.server, name=args.name)
 
+    # Setup event stream
+    event_stream = None
+    if args.orchestrator_url and args.match_id and args.internal_secret:
+        event_stream = EventStream(args.orchestrator_url, args.internal_secret, args.match_id)
+
     # Wire up kill tracking
     async def on_kill(bot, killer, victim, weapon):
         tracker.record_kill(killer, victim, weapon)
@@ -133,6 +139,10 @@ async def run(args):
             logger.info(f"KILL: fragged {victim} ({weapon})")
         if victim and victim.lower() == args.name.lower():
             logger.info(f"DEATH: killed by {killer} ({weapon})")
+        
+        # Emit real-time event
+        if event_stream:
+            event_stream.emit_kill(killer, victim, weapon)
 
     agent.bot.on_kill = on_kill
 
@@ -140,6 +150,8 @@ async def run(args):
     async def on_chat(bot, sender, message):
         tracker.record_chat(sender, message)
         logger.info(f"CHAT [{sender}]: {message}")
+        if event_stream:
+            event_stream.emit_chat(sender, message)
 
     agent.bot.on_chat_received = on_chat
 

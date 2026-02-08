@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake - Spectate</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .spectate-wrap {
+            max-width: 1400px;
+            margin: 1rem auto;
+            padding: 0 1rem 2rem;
+        }
+        .spectate-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.8rem;
+        }
+        .spectate-toolbar input {
+            min-width: 220px;
+            padding: 0.55rem 0.7rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 4px;
+        }
+        .spectate-toolbar label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .spectate-shell {
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            height: min(78vh, 900px);
+        }
+        .spectate-shell iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+        .spectate-overlay {
+            position: absolute;
+            top: 0.8rem;
+            left: 0.8rem;
+            background: rgba(0, 0, 0, 0.62);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 6px;
+            padding: 0.5rem 0.65rem;
+            font-size: 0.82rem;
+            color: #fff;
+            display: grid;
+            gap: 0.25rem;
+            min-width: 210px;
+        }
+        .mono {
+            font-family: Menlo, Monaco, Consolas, monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
+        </div>
+    </div>
+
+    <div class="spectate-wrap">
+        <div class="spectate-toolbar">
+            <label for="spectate-path">Spectator Path</label>
+            <input id="spectate-path" value="/spectate/" />
+            <button class="btn btn-primary" onclick="loadSpectator()">Open</button>
+            <label><input type="checkbox" id="auto-follow" checked /> Auto-follow active match</label>
+        </div>
+
+        <div class="spectate-shell">
+            <iframe id="spectator-frame" title="QuakeJS Spectator" allowfullscreen></iframe>
+            <div class="spectate-overlay">
+                <div>Socket: <span id="sock-state" class="mono">connecting</span></div>
+                <div>Match: <span id="match-id" class="mono">none</span></div>
+                <div>Event: <span id="last-event" class="mono">none</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const frame = document.getElementById("spectator-frame");
+        const pathInput = document.getElementById("spectate-path");
+        const sockState = document.getElementById("sock-state");
+        const matchIdEl = document.getElementById("match-id");
+        const lastEventEl = document.getElementById("last-event");
+        const autoFollow = document.getElementById("auto-follow");
+
+        const query = new URLSearchParams(window.location.search);
+        const initialPath = query.get("path") || "/spectate/";
+        const initialMatch = query.get("match_id");
+        if (initialMatch) {
+            matchIdEl.textContent = initialMatch;
+        }
+        pathInput.value = initialPath;
+
+        function loadSpectator() {
+            frame.src = pathInput.value || "/spectate/";
+        }
+
+        loadSpectator();
+
+        let ws = null;
+        let reconnectTimer = null;
+
+        function connectEvents() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+            const proto = window.location.protocol === "https:" ? "wss" : "ws";
+            ws = new WebSocket(`${proto}://${window.location.host}/ws/events`);
+
+            ws.onopen = () => { sockState.textContent = "open"; };
+            ws.onclose = () => {
+                sockState.textContent = "closed";
+                reconnectTimer = setTimeout(connectEvents, 3000);
+            };
+            ws.onerror = () => { sockState.textContent = "error"; };
+
+            ws.onmessage = (evt) => {
+                let msg = null;
+                try {
+                    msg = JSON.parse(evt.data);
+                } catch (_) {
+                    return;
+                }
+                const eventType = msg.event_type || "unknown";
+                const data = msg.data || {};
+                lastEventEl.textContent = eventType;
+
+                if (eventType === "match_started") {
+                    if (data.match_id !== undefined) {
+                        matchIdEl.textContent = String(data.match_id);
+                    }
+                    if (autoFollow.checked && data.spectate_path) {
+                        pathInput.value = data.spectate_path;
+                        loadSpectator();
+                    }
+                } else if (eventType === "match_ended" && data.match_id !== undefined) {
+                    if (String(data.match_id) === matchIdEl.textContent) {
+                        matchIdEl.textContent = "none";
+                    }
+                }
+            };
+        }
+
+        connectEvents();
+    </script>
+</body>
+</html>

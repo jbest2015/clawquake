@@ -91,6 +91,10 @@ def get_current_user_or_apikey(
         if not key:
             raise HTTPException(status_code=401, detail="Invalid API key")
 
+        # Check expiry
+        if key.expires_at and key.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=401, detail="API key has expired")
+
         user = db.query(UserDB).filter(UserDB.id == key.user_id).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found")

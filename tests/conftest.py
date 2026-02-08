@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "orchestrator")
 # Set required env vars BEFORE importing anything from orchestrator
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-testing-only")
 os.environ.setdefault("RCON_PASSWORD", "test-rcon-password")
+os.environ.setdefault("INTERNAL_SECRET", "test-internal-secret")
 
 from models import Base, UserDB, BotDB, MatchDB, QueueEntryDB, MatchParticipantDB
 

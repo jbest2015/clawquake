@@ -12,6 +12,7 @@
     <div class="header">
         <h1>ClawQuake</h1>
         <div class="user-info">
+            <a class="btn btn-outline" href="/spectate.html">Spectate</a>
             <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
             <span id="username-display"></span>
             <button class="btn btn-outline" onclick="logout()">Logout</button>
@@ -44,7 +45,10 @@
             <div class="card">
                 <div class="card-header">
                     <h3>Live Scores</h3>
-                    <span style="font-size: 0.75rem; color: var(--text-muted);" id="player-count">0 players</span>
+                    <div style="display: flex; gap: 0.6rem; font-size: 0.75rem; color: var(--text-muted);">
+                        <span id="player-count">0 players</span>
+                        <span id="queue-count">queue: 0</span>
+                    </div>
                 </div>
                 <div class="card-body" id="scoreboard">
                     <div class="empty-state">No players connected</div>
@@ -133,47 +137,91 @@
 
         initStream();
 
-        // ── Live Status Polling ─────────────────────────────
-        async function pollStatus() {
-            try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
+        // ── Live Status Rendering ───────────────────────────
+        function renderStatus(data) {
+            const mapEl = document.getElementById('map-name');
+            const badgeEl = document.getElementById('status-badge');
+            const countEl = document.getElementById('player-count');
+            const boardEl = document.getElementById('scoreboard');
 
-                const mapEl = document.getElementById('map-name');
-                const badgeEl = document.getElementById('status-badge');
-                const countEl = document.getElementById('player-count');
-                const boardEl = document.getElementById('scoreboard');
+            if (data.online) {
+                mapEl.textContent = data.map_name || 'Unknown Map';
+                badgeEl.textContent = 'LIVE';
+                badgeEl.className = 'status-badge status-live';
+                countEl.textContent = (data.player_count || 0) + ' players';
 
-                if (data.online) {
-                    mapEl.textContent = data.map_name || 'Unknown Map';
-                    badgeEl.textContent = 'LIVE';
-                    badgeEl.className = 'status-badge status-live';
-                    countEl.textContent = data.player_count + ' players';
-
-                    if (data.players && data.players.length > 0) {
-                        // Sort by score descending
-                        const sorted = data.players.sort((a, b) => b.score - a.score);
-                        boardEl.innerHTML = sorted.map((p, i) => `
-                            <div class="score-row">
-                                <span class="rank">${i + 1}</span>
-                                <span class="name">${escapeHtml(p.name)}</span>
-                                <span class="score">${p.score}</span>
-                                <span class="stat">${p.ping}ms</span>
-                            </div>
-                        `).join('');
-                    } else {
-                        boardEl.innerHTML = '<div class="empty-state">Waiting for players...</div>';
-                    }
+                if (data.players && data.players.length > 0) {
+                    const sorted = [...data.players].sort((a, b) => b.score - a.score);
+                    boardEl.innerHTML = sorted.map((p, i) => `
+                        <div class="score-row">
+                            <span class="rank">${i + 1}</span>
+                            <span class="name">${escapeHtml(p.name)}</span>
+                            <span class="score">${p.score}</span>
+                            <span class="stat">${p.ping}ms</span>
+                        </div>
+                    `).join('');
                 } else {
-                    mapEl.textContent = '—';
-                    badgeEl.textContent = 'OFFLINE';
-                    badgeEl.className = 'status-badge status-offline';
-                    countEl.textContent = '0 players';
-                    boardEl.innerHTML = '<div class="empty-state">Server offline</div>';
+                    boardEl.innerHTML = '<div class="empty-state">Waiting for players...</div>';
                 }
-            } catch (e) {
-                // Silently retry
+            } else {
+                mapEl.textContent = '—';
+                badgeEl.textContent = 'OFFLINE';
+                badgeEl.className = 'status-badge status-offline';
+                countEl.textContent = '0 players';
+                boardEl.innerHTML = '<div class="empty-state">Server offline</div>';
             }
+        }
+
+        // ── Live Events WebSocket ───────────────────────────
+        let eventSocket = null;
+        let pingTimer = null;
+
+        function connectEvents() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            eventSocket = new WebSocket(`${wsProtocol}://${window.location.host}/ws/events`);
+
+            eventSocket.onopen = () => {
+                if (pingTimer) clearInterval(pingTimer);
+                pingTimer = setInterval(() => {
+                    if (eventSocket && eventSocket.readyState === WebSocket.OPEN) {
+                        eventSocket.send('ping');
+                    }
+                }, 20000);
+            };
+
+            eventSocket.onmessage = (evt) => {
+                try {
+                    const msg = JSON.parse(evt.data);
+                    const eventType = msg.event_type;
+                    const data = msg.data || {};
+
+                    if (eventType === 'status_update') {
+                        renderStatus(data);
+                    } else if (eventType === 'queue_update') {
+                        document.getElementById('queue-count').textContent =
+                            `queue: ${data.waiting_entries ?? 0}`;
+                    } else if (eventType === 'match_started' || eventType === 'match_ended') {
+                        loadHistory();
+                        loadLeaderboard();
+                    }
+                } catch (e) {
+                    // ignore malformed events
+                }
+            };
+
+            eventSocket.onclose = () => {
+                if (pingTimer) {
+                    clearInterval(pingTimer);
+                    pingTimer = null;
+                }
+                setTimeout(connectEvents, 3000);
+            };
+
+            eventSocket.onerror = () => {
+                if (eventSocket) {
+                    eventSocket.close();
+                }
+            };
         }
 
         // ── Leaderboard ─────────────────────────────────────
@@ -239,14 +287,13 @@
         }
 
         // ── Init ────────────────────────────────────────────
-        pollStatus();
+        connectEvents();
         loadLeaderboard();
         loadHistory();
-
-        // Poll every 3 seconds
-        setInterval(pollStatus, 3000);
         // Refresh leaderboard every 30 seconds
         setInterval(loadLeaderboard, 30000);
+        // Refresh history every 30 seconds
+        setInterval(loadHistory, 30000);
     </script>
 </body>
 </html>

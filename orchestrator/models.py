@@ -176,12 +176,14 @@ class ApiKeyDB(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_used = Column(DateTime, nullable=True)
     is_active = Column(Integer, default=1)
+    expires_at = Column(DateTime, nullable=True)  # None = never expires
 
 
 # ── API Key & Bot Registration Schemas ──────────────────────────
 
 class ApiKeyCreate(BaseModel):
     name: str = "default"
+    expires_in_days: Optional[int] = None  # None = never expires
 
 
 class ApiKeyResponse(BaseModel):
@@ -191,6 +193,7 @@ class ApiKeyResponse(BaseModel):
     created_at: datetime
     last_used: Optional[datetime]
     is_active: bool
+    expires_at: Optional[datetime] = None
 
 
 class ApiKeyCreated(BaseModel):

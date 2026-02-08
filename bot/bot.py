@@ -20,6 +20,7 @@ import time
 from .client import Q3Client
 from .defs import weapon_t
 from .kill_tracker import KillTracker
+from .game_intelligence import SpatialAwareness, ItemClassifier, CombatAnalyzer
 
 logger = logging.getLogger('clawquake.bot')
 
@@ -59,6 +60,13 @@ class GameView:
             return ps.velocity
         return (0, 0, 0)
 
+    @property
+    def am_i_falling(self):
+        return self._bot.spatial.is_falling
+
+    @property
+    def am_i_stuck(self):
+        return self._bot.spatial.is_stuck
     @property
     def my_viewangles(self):
         """My (pitch, yaw, roll) view angles."""
@@ -135,6 +143,31 @@ class GameView:
         dz = target_pos[2] - my[2]
         return math.sqrt(dx*dx + dy*dy + dz*dz)
 
+    def suggest_weapon(self, target_dist):
+        """Recommend best weapon for a given distance."""
+        return self._bot.combat_analyzer.best_weapon(target_dist)
+
+    @property
+    def items(self):
+        """List of visible items classified by type."""
+        result = []
+        snap = self._bot.client.current_snapshot
+        if not snap:
+            return result
+            
+        config_strings = self._bot.client.config_strings
+        for num, ent in snap.entities.items():
+            itype, subtype, val = ItemClassifier.classify(ent, config_strings)
+            if itype != 'unknown':
+                result.append({
+                    'type': itype,
+                    'subtype': subtype,
+                    'value': val,
+                    'position': ent.origin,
+                    'entity_num': num
+                })
+        return result
+
     def angle_to(self, target_pos):
         """Calculate yaw angle from me to a target position."""
         my = self.my_position
@@ -210,6 +243,8 @@ class ClawBot:
         self._chat_log = []
         self._kill_log = []
         self.kill_tracker = KillTracker(name)
+        self.spatial = SpatialAwareness(self)
+        self.combat_analyzer = CombatAnalyzer(self)
 
         # Wire up client callbacks
         self.client.on_snapshot = self._on_snapshot
@@ -322,6 +357,9 @@ class ClawBot:
         if self._action_queue:
             self.client.queue_commands(self._action_queue)
             self._action_queue.clear()
+
+        # Update bot intelligence
+        self.spatial.update()
 
         # Call AI tick
         if self.on_tick:
