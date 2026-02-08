@@ -114,10 +114,18 @@ class MatchMaker:
     """
     Background matchmaking engine.
     Polls the queue, pairs bots, creates matches, finalizes results.
+
+    When a process_manager is provided, the run_loop will automatically
+    launch bot subprocesses via agent_runner and finalize matches when
+    all bots complete. Without a process_manager, matches are created
+    in the DB but bots must be launched externally.
     """
 
-    def __init__(self, db_session_factory=None):
+    def __init__(self, db_session_factory=None, process_manager=None,
+                 rcon_pool=None):
         self.db_factory = db_session_factory or SessionLocal
+        self.process_manager = process_manager  # Optional BotProcessManager
+        self.rcon_pool = rcon_pool  # Optional RconPool
         self._running = False
         self._active_matches: dict[int, dict] = {}  # match_id -> match info
 
@@ -311,6 +319,80 @@ class MatchMaker:
         finally:
             db.close()
 
+    def _get_server_url(self) -> Optional[str]:
+        """Get an available server URL for a new match."""
+        if self.rcon_pool:
+            server = self.rcon_pool.get_available_server()
+            if server:
+                # Convert RCON server info to WebSocket URL for bot connection
+                host = server.get("ws_host", server.get("host", "localhost"))
+                port = server.get("ws_port", server.get("port", 27960))
+                return f"ws://{host}:{port}"
+        # Fallback to env var or default
+        urls = os.environ.get("GAME_SERVER_URLS", "ws://localhost:27960")
+        return urls.split(",")[0].strip()
+
+    def _get_bot_strategy(self, db: Session, bot_id: int) -> str:
+        """Get the strategy path for a bot. Falls back to default."""
+        bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
+        if bot:
+            # Future: bots may have a strategy_path column
+            # For now, use a convention: strategies/<bot_name>.py or default
+            strategy_path = f"strategies/{bot.name.lower().replace(' ', '_')}.py"
+            if os.path.exists(strategy_path):
+                return strategy_path
+        return os.environ.get("DEFAULT_STRATEGY", "strategies/default.py")
+
+    async def _run_match_with_processes(self, match_id: int, bot_ids: list[int]):
+        """Launch bot processes, wait for completion, finalize match."""
+        if not self.process_manager:
+            return
+
+        db = self._get_db()
+        try:
+            server_url = self._get_server_url()
+            if not server_url:
+                logger.error(f"Match {match_id}: no available server")
+                return
+
+            # Build bot info list
+            bots_info = []
+            for bot_id in bot_ids:
+                bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
+                if bot:
+                    bots_info.append({
+                        "bot_id": bot.id,
+                        "bot_name": bot.name,
+                        "strategy_path": self._get_bot_strategy(db, bot.id),
+                    })
+
+            if not bots_info:
+                logger.error(f"Match {match_id}: no valid bots found")
+                return
+
+            # Launch all bots
+            self.process_manager.launch_match(
+                match_id=match_id,
+                bots=bots_info,
+                server_url=server_url,
+                duration=MATCH_DURATION,
+            )
+
+            # Wait for all bots to finish
+            status = await self.process_manager.wait_for_match(match_id)
+            logger.info(f"Match {match_id}: all bots finished — {status}")
+
+            # Finalize the match (ELO calculation)
+            self.finalize_match(match_id)
+
+            # Clean up process tracking
+            self.process_manager.cleanup_match(match_id)
+
+        except Exception as e:
+            logger.error(f"Match {match_id} process error: {e}")
+        finally:
+            db.close()
+
     async def run_loop(self):
         """Main matchmaker loop — runs as a background task."""
         self._running = True
@@ -320,6 +402,17 @@ class MatchMaker:
                 match_id = self.poll_queue()
                 if match_id:
                     logger.info(f"Match {match_id} created from queue")
+
+                    # If we have a process manager, launch bots in background
+                    if self.process_manager:
+                        bot_ids = list(
+                            self._active_matches.get(match_id, {})
+                            .get("bot_ids", [])
+                        )
+                        asyncio.create_task(
+                            self._run_match_with_processes(match_id, bot_ids)
+                        )
+
             except Exception as e:
                 logger.error(f"Matchmaker error: {e}")
 

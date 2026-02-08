@@ -26,11 +26,51 @@ from routes_bots import router as bots_router
 from routes_keys import router as keys_router
 from routes_queue import router as queue_router
 from rcon import get_server_status, add_bot, change_map, server_say, send_rcon
+from rcon_pool import RconPool
+from process_manager import BotProcessManager
+from matchmaker import MatchMaker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawquake")
 
-app = FastAPI(title="ClawQuake Orchestrator", version="0.1.0")
+
+# ── Server Configuration ──────────────────────────────────────────
+
+def _load_server_list() -> list[dict]:
+    """Load game server list from GAME_SERVERS env var (JSON array)."""
+    raw = os.environ.get("GAME_SERVERS", "")
+    if raw:
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("Invalid GAME_SERVERS JSON, using defaults")
+
+    # Fallback: single server from legacy env vars
+    host = os.environ.get("GAME_SERVER_HOST", "localhost")
+    port = int(os.environ.get("GAME_SERVER_PORT", "27960"))
+    rcon_pw = os.environ.get("RCON_PASSWORD", "")
+    return [{"id": "server-1", "host": host, "port": port, "rcon_password": rcon_pw}]
+
+
+# Initialize infrastructure (lazy — only when env vars are set)
+_server_list = _load_server_list()
+rcon_pool = RconPool(_server_list)
+
+_internal_secret = os.environ.get("INTERNAL_SECRET", "")
+_orchestrator_url = os.environ.get("ORCHESTRATOR_URL", "http://localhost:8000")
+
+process_manager = BotProcessManager(
+    orchestrator_url=_orchestrator_url,
+    internal_secret=_internal_secret,
+)
+
+matchmaker = MatchMaker(
+    process_manager=process_manager,
+    rcon_pool=rcon_pool,
+)
+
+
+app = FastAPI(title="ClawQuake Orchestrator", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -186,6 +226,20 @@ def admin_say(message: str, admin: UserDB = Depends(require_admin)):
 def admin_rcon(command: str, admin: UserDB = Depends(require_admin)):
     result = send_rcon(command)
     return {"result": result}
+
+
+# ── Admin: Active Matches (Batch 2) ────────────────────────────
+
+@app.get("/api/admin/matches/active")
+def admin_active_matches(admin: UserDB = Depends(require_admin)):
+    """List all active matches with process status."""
+    return {"matches": process_manager.active_matches()}
+
+
+@app.get("/api/admin/servers")
+def admin_server_list(admin: UserDB = Depends(require_admin)):
+    """List all game servers with status."""
+    return {"servers": rcon_pool.list_all()}
 
 
 # ── Internal: Match Reporting (Claude — Batch 1) ──────────────

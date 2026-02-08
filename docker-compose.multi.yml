@@ -1,0 +1,91 @@
+# ClawQuake Multi-Server Setup
+# Run with: docker-compose -f docker-compose.multi.yml up -d
+#
+# Launches multiple game server instances for concurrent matches,
+# plus the orchestrator with process manager and matchmaker.
+#
+# Requires: .env file with JWT_SECRET, RCON_PASSWORD, INTERNAL_SECRET
+
+version: "3.8"
+
+services:
+  # ── Game Servers ─────────────────────────────────────────────────
+  gameserver-1:
+    build:
+      context: ./gameserver
+      dockerfile: Dockerfile
+    container_name: clawquake-server-1
+    ports:
+      - "27961:27960/udp"
+      - "27961:27960/tcp"
+    environment:
+      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
+      - SERVER_ID=server-1
+    restart: unless-stopped
+
+  gameserver-2:
+    build:
+      context: ./gameserver
+      dockerfile: Dockerfile
+    container_name: clawquake-server-2
+    ports:
+      - "27962:27960/udp"
+      - "27962:27960/tcp"
+    environment:
+      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
+      - SERVER_ID=server-2
+    restart: unless-stopped
+
+  gameserver-3:
+    build:
+      context: ./gameserver
+      dockerfile: Dockerfile
+    container_name: clawquake-server-3
+    ports:
+      - "27963:27960/udp"
+      - "27963:27960/tcp"
+    environment:
+      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
+      - SERVER_ID=server-3
+    restart: unless-stopped
+
+  # ── Orchestrator ─────────────────────────────────────────────────
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: clawquake-orchestrator
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-changeme}
+      - MATCH_DURATION=${MATCH_DURATION:-120}
+      - QUEUE_POLL_INTERVAL=${QUEUE_POLL_INTERVAL:-5}
+      # Server list as JSON array
+      - GAME_SERVERS=[{"id":"server-1","host":"gameserver-1","port":27960,"rcon_password":"${RCON_PASSWORD}"},{"id":"server-2","host":"gameserver-2","port":27960,"rcon_password":"${RCON_PASSWORD}"},{"id":"server-3","host":"gameserver-3","port":27960,"rcon_password":"${RCON_PASSWORD}"}]
+      # WebSocket server URLs for bot connections
+      - GAME_SERVER_URLS=ws://gameserver-1:27960,ws://gameserver-2:27960,ws://gameserver-3:27960
+    volumes:
+      - ./strategies:/app/strategies:ro
+      - ./results:/app/results
+      - ./clawquake.db:/app/clawquake.db
+    depends_on:
+      - gameserver-1
+      - gameserver-2
+      - gameserver-3
+    restart: unless-stopped
+
+  # ── Nginx Reverse Proxy ──────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: clawquake-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
