@@ -21,7 +21,7 @@ DEFAULT_MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "120"))
 PROCESS_TIMEOUT_BUFFER = 30  # extra seconds before force-kill
 AGENT_RUNNER_PATH = os.environ.get(
     "AGENT_RUNNER_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "agent_runner.py"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_runner.py"),
 )
 
 
@@ -208,6 +208,12 @@ class BotProcessManager:
                 if rc is not None:
                     bot_proc.finished = True
                     bot_proc.return_code = rc
+                    if rc != 0:
+                        stderr = bot_proc.process.stderr.read().decode(errors="replace") if bot_proc.process.stderr else ""
+                        logger.warning(
+                            f"Bot {bot_proc.bot_name} (match={match_id}) exited with code {rc}. "
+                            f"stderr: {stderr[:500]}"
+                        )
                 else:
                     result["all_finished"] = False
 

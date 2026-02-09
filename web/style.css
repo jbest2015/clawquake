@@ -188,11 +188,34 @@ body {
 
 .dashboard {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 320px minmax(0, 1fr);
     gap: 1.5rem;
     padding: 1.5rem 2rem;
     max-width: 1400px;
     margin: 0 auto;
+}
+
+.video-section {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+}
+
+.dashboard.stats-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard.stats-collapsed .video-section {
+    grid-column: 1;
+}
+
+.dashboard.stats-collapsed .sidebar {
+    display: none;
 }
 
 /* ── Video Player ───────────────────────────────────── */
@@ -220,6 +243,17 @@ body {
     object-fit: contain;
 }
 
+.video-wrapper iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+}
+
 .video-offline {
     position: absolute;
     top: 0;
@@ -243,6 +277,19 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.match-meta-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.stats-toggle-btn {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
 }
 
 .match-info .map-name {
@@ -424,9 +471,19 @@ body {
 
 /* ── Responsive ─────────────────────────────────────── */
 
-@media (max-width: 900px) {
+@media (max-width: 760px) {
     .dashboard {
         grid-template-columns: 1fr;
         padding: 1rem;
+    }
+
+    .video-section,
+    .sidebar,
+    .dashboard.stats-collapsed .video-section {
+        grid-column: 1;
+    }
+
+    .dashboard.stats-collapsed .sidebar {
+        display: none;
     }
 }

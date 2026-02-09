@@ -71,6 +71,19 @@ services:
       - gameserver-3
     restart: unless-stopped
 
+  # ── Spectator Stream (HLS from server-1) ─────────────────────────
+  spectator:
+    build:
+      context: ./spectator
+      dockerfile: Dockerfile
+    container_name: clawquake-spectator
+    environment:
+      - GAME_SERVER_HOST=gameserver-1
+      - GAME_SERVER_PORT=27960
+    depends_on:
+      - gameserver-1
+    restart: unless-stopped
+
   # ── Nginx Reverse Proxy ──────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -82,6 +95,7 @@ services:
       - ./web:/usr/share/nginx/html:ro
     depends_on:
       - orchestrator
+      - spectator
     restart: unless-stopped
 
 volumes:

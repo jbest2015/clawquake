@@ -103,6 +103,26 @@ def _status_payload() -> dict:
     """Current server status payload used by HTTP and WebSocket paths."""
     data = get_server_status()
     if not data["online"]:
+        # QuakeJS websocket servers may not answer UDP getstatus probes.
+        # If bot processes are actively running a match, treat status as live.
+        active = [
+            m for m in process_manager.active_matches()
+            if not m.get("all_finished")
+        ]
+        if active:
+            current = active[0]
+            return {
+                "online": True,
+                "map_name": "q3dm17",
+                "hostname": "ClawQuake Arena",
+                "gametype": "ffa",
+                "fraglimit": "50",
+                "timelimit": str(max(1, int(current.get("duration", 120)) // 60)),
+                "players": [],
+                "player_count": 0,
+                "max_clients": "16",
+                "message": "Live match in progress",
+            }
         return {"online": False, "message": "Game server offline"}
 
     info = data.get("info", {})
@@ -169,11 +189,32 @@ async def _websocket_publish_loop():
         await asyncio.sleep(3.0)
 
 
+matchmaker_task: asyncio.Task | None = None
+
+
+@app.on_event("startup")
+async def _startup_matchmaker():
+    global matchmaker_task
+    if matchmaker_task is None or matchmaker_task.done():
+        matchmaker_task = asyncio.create_task(matchmaker.run_loop())
+
+
 @app.on_event("startup")
 async def _startup_websocket_publisher():
     global websocket_publisher_task
     if websocket_publisher_task is None or websocket_publisher_task.done():
         websocket_publisher_task = asyncio.create_task(_websocket_publish_loop())
+
+
+@app.on_event("shutdown")
+async def _shutdown_matchmaker():
+    global matchmaker_task
+    matchmaker._running = False
+    if matchmaker_task:
+        matchmaker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await matchmaker_task
+        matchmaker_task = None
 
 
 @app.on_event("shutdown")

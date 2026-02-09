@@ -80,7 +80,12 @@
         </div>
 
         <div class="spectate-shell">
-            <iframe id="spectator-frame" title="QuakeJS Spectator" allowfullscreen></iframe>
+            <iframe
+                id="spectator-frame"
+                title="QuakeJS Spectator"
+                allow="pointer-lock; fullscreen; gamepad; keyboard-map"
+                allowfullscreen>
+            </iframe>
             <div class="spectate-overlay">
                 <div>Socket: <span id="sock-state" class="mono">connecting</span></div>
                 <div>Match: <span id="match-id" class="mono">none</span></div>
@@ -98,7 +103,11 @@
         const autoFollow = document.getElementById("auto-follow");
 
         const query = new URLSearchParams(window.location.search);
-        const initialPath = query.get("path") || "/spectate/";
+        const directHost = window.location.hostname || "localhost";
+        const directProto = window.location.protocol === "https:" ? "https:" : "http:";
+        const directPort = window.location.protocol === "https:" ? "" : ":8080";
+        const defaultPath = `${directProto}//${directHost}${directPort}/`;
+        const initialPath = query.get("path") || defaultPath;
         const initialMatch = query.get("match_id");
         if (initialMatch) {
             matchIdEl.textContent = initialMatch;
@@ -106,7 +115,7 @@
         pathInput.value = initialPath;
 
         function loadSpectator() {
-            frame.src = pathInput.value || "/spectate/";
+            frame.src = pathInput.value || defaultPath;
         }
 
         loadSpectator();

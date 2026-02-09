@@ -7,6 +7,7 @@ GAME_SERVER="${GAME_SERVER_HOST:-gameserver}"
 GAME_PORT="${GAME_SERVER_PORT:-27960}"
 HLS_DIR="/var/www/stream"
 FPS=30
+Q3_BIN="${Q3_BIN:-/usr/games/openarena}"
 
 echo "=== ClawQuake Spectator ==="
 echo "Game server: ${GAME_SERVER}:${GAME_PORT}"
@@ -20,24 +21,29 @@ export DISPLAY=:${DISPLAY_NUM}
 
 # Start nginx for HLS serving
 echo "Starting nginx for HLS delivery..."
-nginx
+nginx &
+NGINX_PID=$!
 
 # Wait for game server to be ready
-echo "Waiting for game server..."
-for i in $(seq 1 30); do
-    if echo -ne '\xff\xff\xff\xffgetstatus' | timeout 2 nc -u -w1 ${GAME_SERVER} ${GAME_PORT} 2>/dev/null | head -c4 | grep -q $'\xff'; then
+echo "Waiting briefly for game server..."
+for i in $(seq 1 5); do
+    if nc -zvu -w1 ${GAME_SERVER} ${GAME_PORT} >/dev/null 2>&1; then
         echo "Game server is ready!"
         break
     fi
-    echo "  Attempt ${i}/30 - waiting..."
-    sleep 2
+    echo "  Attempt ${i}/5 - waiting..."
+    sleep 1
 done
 
 # Start ioquake3 client in spectator mode
 echo "Starting ioquake3 client as spectator..."
-LIBGL_ALWAYS_SOFTWARE=1 ioquake3 \
-    +set fs_basepath /usr/share/games/quake3 \
-    +set fs_game baseoa \
+if [ ! -x "${Q3_BIN}" ]; then
+    echo "ERROR: ioquake3 binary not found at ${Q3_BIN}"
+    exit 1
+fi
+
+LIBGL_ALWAYS_SOFTWARE=1 "${Q3_BIN}" \
+    +set s_initsound 0 \
     +set r_mode -1 \
     +set r_customwidth 1280 \
     +set r_customheight 720 \
@@ -68,4 +74,4 @@ echo "Spectator streaming active!"
 echo "HLS available at http://localhost:8080/stream/stream.m3u8"
 
 # Wait for either process to exit
-wait ${Q3_PID} ${FFMPEG_PID}
+wait ${Q3_PID} ${FFMPEG_PID} ${NGINX_PID}

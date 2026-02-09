@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClawQuake — Dashboard</title>
     <link rel="stylesheet" href="/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
 
 <body>
@@ -30,7 +29,15 @@
         <!-- Main: Video Player -->
         <div class="video-section">
             <div class="video-wrapper">
-                <video id="live-video" autoplay muted playsinline></video>
+                <video id="live-video" autoplay muted playsinline style="display:none;"></video>
+                <iframe
+                    id="direct-spectate"
+                    title="Direct QuakeJS Spectator"
+                    src="about:blank"
+                    style="display:block; width:100%; height:100%; border:0; background:#000;"
+                    allow="pointer-lock; fullscreen; gamepad; keyboard-map"
+                    allowfullscreen>
+                </iframe>
                 <div class="video-offline" id="video-offline">
                     <div class="icon">&#9655;</div>
                     <div>Waiting for match stream...</div>
@@ -41,7 +48,12 @@
             </div>
             <div class="match-info">
                 <span class="map-name" id="map-name">—</span>
-                <span class="status-badge status-offline" id="status-badge">OFFLINE</span>
+                <div class="match-meta-controls">
+                    <button class="btn btn-outline stats-toggle-btn" id="stats-toggle-btn" type="button">
+                        Hide Stats
+                    </button>
+                    <span class="status-badge status-offline" id="status-badge">OFFLINE</span>
+                </div>
             </div>
         </div>
 
@@ -100,16 +112,103 @@
             return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
 
-        // ── HLS Video Player ────────────────────────────────
+        // ── Dashboard Layout Controls ─────────────────────
+        const dashboardEl = document.querySelector('.dashboard');
+        const statsToggleBtn = document.getElementById('stats-toggle-btn');
+        const statsPrefKey = 'clawquake_stats_collapsed';
+
+        function setStatsCollapsed(collapsed) {
+            dashboardEl.classList.toggle('stats-collapsed', collapsed);
+            statsToggleBtn.textContent = collapsed ? 'Show Stats' : 'Hide Stats';
+            statsToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            try { localStorage.setItem(statsPrefKey, collapsed ? '1' : '0'); } catch (e) { }
+        }
+
+        statsToggleBtn.addEventListener('click', () => {
+            const collapsed = !dashboardEl.classList.contains('stats-collapsed');
+            setStatsCollapsed(collapsed);
+        });
+
+        const startCollapsed = (() => {
+            try { return localStorage.getItem(statsPrefKey) === '1'; }
+            catch (e) { return false; }
+        })();
+        setStatsCollapsed(startCollapsed);
+
+        // ── Live Viewer (QuakeJS Direct + Optional HLS) ─────────────────
         const video = document.getElementById('live-video');
+        const directSpectate = document.getElementById('direct-spectate');
         const offlineEl = document.getElementById('video-offline');
         let hlsInstance = null;
         let streamActive = false;
+        let streamRetryTimer = null;
+        let fallbackTimer = null;
+        const enableHls = new URLSearchParams(window.location.search).get('hls') === '1';
+        const spectateHost = window.location.hostname || 'localhost';
+        const spectateProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        const spectatePort = window.location.protocol === 'https:' ? '' : ':8080';
+        const directSpectateUrl = `${spectateProtocol}//${spectateHost}${spectatePort}/`;
 
-        function initStream() {
+        function setOfflineMessage(title, detail = '') {
+            offlineEl.innerHTML = `
+                <div class="icon">&#9655;</div>
+                <div>${escapeHtml(title)}</div>
+                <div style="margin-top: 0.5rem; font-size: 0.8rem;">${escapeHtml(detail)}</div>
+            `;
+            offlineEl.style.display = 'flex';
+        }
+
+        function scheduleStreamRetry() {
+            if (streamRetryTimer) {
+                clearTimeout(streamRetryTimer);
+            }
+            streamRetryTimer = setTimeout(initStream, 3000);
+        }
+
+        function showDirectSpectateFallback(reason = '') {
+            video.style.display = 'none';
+            directSpectate.style.display = 'block';
+            if (!directSpectate.src || directSpectate.src === 'about:blank') {
+                directSpectate.src = directSpectateUrl;
+            }
+            // Ensure keyboard focus goes to the embedded game frame.
+            try { directSpectate.focus(); } catch (e) { }
+            setOfflineMessage(
+                'Direct spectator mode',
+                reason || 'Connected to QuakeJS live view.'
+            );
+            // Keep overlay hidden in direct mode so gameplay stays visible.
+            offlineEl.style.display = 'none';
+        }
+
+        async function ensureHlsLib() {
+            if (window.Hls && typeof window.Hls.isSupported === 'function') {
+                return true;
+            }
+            return await new Promise((resolve) => {
+                const tag = document.createElement('script');
+                tag.src = '/vendor/hls.min.js?v=1.6.15-local&r=' + Date.now();
+                tag.async = true;
+                tag.onload = () => resolve(!!(window.Hls && typeof window.Hls.isSupported === 'function'));
+                tag.onerror = () => resolve(false);
+                document.head.appendChild(tag);
+            });
+        }
+
+        async function initStream() {
+            if (!enableHls) {
+                showDirectSpectateFallback('HLS disabled (use ?hls=1 to force HLS mode)');
+                return;
+            }
+
             const streamUrl = '/stream/stream.m3u8';
+            if (hlsInstance) {
+                try { hlsInstance.destroy(); } catch (e) { }
+                hlsInstance = null;
+            }
 
-            if (Hls.isSupported()) {
+            const hasHls = await ensureHlsLib();
+            if (hasHls) {
                 hlsInstance = new Hls({
                     liveDurationInfinity: true,
                     liveBackBufferLength: 0,
@@ -121,16 +220,40 @@
                 hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
                     video.play().catch(() => { });
                     offlineEl.style.display = 'none';
+                    video.style.display = 'block';
+                    directSpectate.style.display = 'none';
                     streamActive = true;
-                });
-                hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal) {
-                        streamActive = false;
-                        offlineEl.style.display = 'flex';
-                        setTimeout(initStream, 5000);
+                    if (fallbackTimer) {
+                        clearTimeout(fallbackTimer);
+                        fallbackTimer = null;
                     }
                 });
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+                    if (!data.fatal) {
+                        return;
+                    }
+                    streamActive = false;
+                    setOfflineMessage('Stream reconnecting...', data.details || 'HLS error');
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        try { hlsInstance.startLoad(); return; } catch (e) { }
+                    }
+                    if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        try { hlsInstance.recoverMediaError(); return; } catch (e) { }
+                    }
+                    showDirectSpectateFallback(data.details || 'HLS fatal error');
+                    scheduleStreamRetry();
+                });
+
+                if (fallbackTimer) clearTimeout(fallbackTimer);
+                fallbackTimer = setTimeout(() => {
+                    if (!streamActive) {
+                        showDirectSpectateFallback('HLS startup timeout');
+                    }
+                }, 8000);
+                return;
+            }
+
+            if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 // Safari native HLS
                 video.src = streamUrl;
                 video.addEventListener('loadedmetadata', () => {
@@ -138,6 +261,11 @@
                     offlineEl.style.display = 'none';
                     streamActive = true;
                 });
+            } else {
+                // No usable HLS engine in this browser session.
+                setOfflineMessage('Player setup failed', 'HLS library unavailable.');
+                showDirectSpectateFallback('HLS library unavailable');
+                scheduleStreamRetry();
             }
         }
 
@@ -170,6 +298,14 @@
                     boardEl.innerHTML = '<div class="empty-state">Waiting for players...</div>';
                 }
             } else {
+                if (streamActive) {
+                    mapEl.textContent = mapEl.textContent === '—' ? 'q3dm17' : mapEl.textContent;
+                    badgeEl.textContent = 'LIVE';
+                    badgeEl.className = 'status-badge status-live';
+                    countEl.textContent = 'stream active';
+                    boardEl.innerHTML = '<div class="empty-state">Live stream active</div>';
+                    return;
+                }
                 mapEl.textContent = '—';
                 badgeEl.textContent = 'OFFLINE';
                 badgeEl.className = 'status-badge status-offline';
@@ -292,14 +428,57 @@
             return div.innerHTML;
         }
 
+        async function pollLiveFallback() {
+            try {
+                const [statusRes, matchesRes] = await Promise.all([
+                    fetch('/api/status'),
+                    fetch('/api/matches', { headers: authHeaders() }),
+                ]);
+
+                let statusData = null;
+                if (statusRes.ok) {
+                    statusData = await statusRes.json();
+                }
+                let matches = [];
+                if (matchesRes.ok) {
+                    matches = await matchesRes.json();
+                }
+                const activeMatch = Array.isArray(matches)
+                    ? matches.find((m) => !m.ended_at)
+                    : null;
+
+                if (statusData && statusData.online) {
+                    renderStatus(statusData);
+                    return;
+                }
+                if (activeMatch || streamActive) {
+                    renderStatus({
+                        online: true,
+                        map_name: activeMatch?.map_name || 'q3dm17',
+                        players: [],
+                        player_count: 0,
+                    });
+                    return;
+                }
+                if (statusData) {
+                    renderStatus(statusData);
+                }
+            } catch (e) {
+                // best-effort fallback polling
+            }
+        }
+
         // ── Init ────────────────────────────────────────────
         connectEvents();
         loadLeaderboard();
         loadHistory();
+        pollLiveFallback();
         // Refresh leaderboard every 30 seconds
         setInterval(loadLeaderboard, 30000);
         // Refresh history every 30 seconds
         setInterval(loadHistory, 30000);
+        // Fallback status polling when websocket/status is unreliable
+        setInterval(pollLiveFallback, 5000);
     </script>
 </body>
 
