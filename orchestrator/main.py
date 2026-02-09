@@ -38,6 +38,7 @@ from tournament.bracket import TournamentBracket
 from models import (
     TournamentCreate, TournamentJoin, TournamentResponse
 )
+from ai_agent_interface import router as ai_agent_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawquake")
@@ -95,6 +96,7 @@ app.add_middleware(
 app.include_router(bots_router)
 app.include_router(keys_router)
 app.include_router(queue_router)
+app.include_router(ai_agent_router)
 
 
 def _status_payload() -> dict:
@@ -568,6 +570,41 @@ def getting_started_page():
             return FileResponse(path)
     raise HTTPException(status_code=404, detail="getting-started.html not found")
 
+
+
+# ── Replay Endpoints (Anti-Gravity — Batch 4) ───────────────────
+
+REPLAY_DIR = os.environ.get("REPLAY_DIR", "replays")
+
+@app.get("/api/replays")
+def list_replays():
+    if not os.path.isdir(REPLAY_DIR):
+        return []
+    files = []
+    for f in os.listdir(REPLAY_DIR):
+        if f.endswith(".json"):
+            path = os.path.join(REPLAY_DIR, f)
+            stat = os.stat(path)
+            files.append({
+                "filename": f,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime)
+            })
+    # Sort by recent
+    files.sort(key=lambda x: x["modified"], reverse=True)
+    return files
+
+@app.get("/api/replays/{filename}")
+def get_replay(filename: str):
+    # Security check: no path traversal
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+        
+    path = os.path.join(REPLAY_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Replay not found")
+        
+    return FileResponse(path)
 
 # ── Static Files (must be last — catch-all) ─────────────────────
 

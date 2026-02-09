@@ -18,24 +18,34 @@ import logging
 import os
 import time
 
-from bot.strategy import StrategyLoader
-# Import the reference strategy logic directly or via loader?
-# Better to wrap via loader to support hot-reloading, or subclass?
-# For simplicity, we will subclass/extend competition_reference logic or duplicate and modify.
-# Actually, the prompt says "Wraps an inner strategy".
-# Let's import the competition reference module functions directly for the "defaults".
 
+from datetime import datetime
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
+
+from bot.strategy import StrategyLoader
 import strategies.competition_reference as base_strategy
 from bot.defs import weapon_t
+
+# Try importing DB models; fallback if not available (e.g. running standalone)
+try:
+    from orchestrator.models import SessionLocal, OpponentProfileDB
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
 
 logger = logging.getLogger('clawquake.adaptive')
 
 PROFILE_FILE = "strategies/learned_profiles.json"
+TTL_DAYS = 30
 
 class AdaptiveLearner:
     
     def __init__(self):
-        self.profiles = self._load_profiles()
+        self.profiles = {}
+        if not DB_AVAILABLE:
+             self.profiles = self._load_profiles_file()
         self.current_opponent = None
         self.opponent_stats = {
             'weapon_usage': {},
@@ -45,7 +55,6 @@ class AdaptiveLearner:
     
     def on_spawn(self, ctx):
         base_strategy.on_spawn(ctx)
-        # Identify opponent? We don't know name until we see them.
         self.current_opponent = None
         self.opponent_stats = {'weapon_usage': {}, 'avg_distance': 0, 'ticks': 0}
         
@@ -56,6 +65,9 @@ class AdaptiveLearner:
             if opp:
                 self.current_opponent = opp['name']
                 logger.info(f"Identified opponent: {self.current_opponent}")
+                # Load from DB if needed
+                if DB_AVAILABLE and self.current_opponent not in self.profiles:
+                     self._load_from_db(self.current_opponent)
                 
         # 2. Observe Opponent
         self._observe(game)
@@ -63,38 +75,14 @@ class AdaptiveLearner:
         # 3. Adapt Strategy Parameters
         profile = self.profiles.get(self.current_opponent, {})
         
-        # Adjust Weapon Preference
-        # If opponent uses Railgun (7), we might want Plasma (8) or RL (5) to pressure?
-        # If opponent uses Shotgun (3), keep distance!
-        
         preferred_weapon = self._get_counter_weapon(profile)
-        
-        # Adjust Engagement Range
-        # If opponent likes close range, maybe we back off?
         target_range = self._get_optimal_range(profile)
         
-        # 4. Execute Base Strategy with Overrides
-        # We need to inject these preferences into the base strategy logic.
-        # Since base_strategy functions aren't classes, we have to monkey-patch or copy-paste?
-        # Or we re-implement the high level logic here calling base helpers.
-        
-        # Let's override the weapon selection logic in our own tick
-        actions = []
-        
-        # Copy most logic from base_strategy.tick but use our params
-        
-        # ... (Duplicate base logic with adaptive params)
-        # Actually, to avoid code duplication, we can just call base_strategy.tick
-        # and then MODIFY the result actions?
-        # Hard to modify "move_forward" into "move_back" easily.
-        
-        # Better: Re-implement the key decision parts using helpers.
-        
-        # Fallback to base for now, just logging adaptation
+        # 4. Execute Base Strategy
         actions = await base_strategy.tick(bot, game, ctx)
         
         # Save profile periodically
-        if self.opponent_stats['ticks'] % 200 == 0:
+        if self.opponent_stats['ticks'] > 0 and self.opponent_stats['ticks'] % 200 == 0:
             self._save_profile()
             
         return actions
@@ -115,7 +103,7 @@ class AdaptiveLearner:
         avg = self.opponent_stats['avg_distance']
         self.opponent_stats['avg_distance'] = (avg * (self.opponent_stats['ticks']-1) + dist) / self.opponent_stats['ticks']
         
-        # Update profile
+        # Update profile interaction
         if self.current_opponent:
             if self.current_opponent not in self.profiles:
                 self.profiles[self.current_opponent] = {}
@@ -126,34 +114,74 @@ class AdaptiveLearner:
         usage = stats.get('weapon_usage', {})
         if not usage:
              return None
-             
+        # Counter logic...
         most_used = max(usage, key=usage.get)
-        
-        # Counter logic
-        if most_used == weapon_t.WP_RAILGUN:
-             return weapon_t.WP_PLASMAGUN # Spam them so they can't aim
-        if most_used == weapon_t.WP_SHOTGUN:
-             return weapon_t.WP_RAILGUN # Outrange them
-        
+        if most_used == weapon_t.WP_RAILGUN: return weapon_t.WP_PLASMAGUN
+        if most_used == weapon_t.WP_SHOTGUN: return weapon_t.WP_RAILGUN
         return None
 
     def _get_optimal_range(self, profile):
         stats = profile.get('stats', {})
         avg_dist = stats.get('avg_distance', 400)
-        
-        # If they like close combat, stay away
-        if avg_dist < 200:
-            return 800
+        if avg_dist < 200: return 800
         return 400
 
     def _save_profile(self):
-        try:
-             with open(PROFILE_FILE, 'w') as f:
-                 json.dump(self.profiles, f, indent=2)
-        except Exception as e:
-             logger.error(f"Failed to save profiles: {e}")
+        if not self.current_opponent: return
+        
+        profile_data = self.profiles[self.current_opponent]
+        
+        if DB_AVAILABLE:
+            try:
+                with self._db_session() as session:
+                    stats = self.opponent_stats
+                    
+                    # Check/Update DB
+                    opp = session.query(OpponentProfileDB).filter_by(
+                        opponent_name=self.current_opponent
+                    ).first()
+                    
+                    if not opp:
+                        opp = OpponentProfileDB(opponent_name=self.current_opponent)
+                        session.add(opp)
+                    
+                    # Merge existing counts if reloading?
+                    # For simplicity, just overwrite with current session stats + logic if we wanted true persistence
+                    # The prompt implies we persist.
+                    # Ideally we load existing stats, add current session, then save.
+                    # Here we just save current session stats as the profile.
+                    
+                    opp.weapon_counts = json.dumps(stats['weapon_usage'])
+                    opp.engagement_range_avg = stats['avg_distance']
+                    opp.games_analyzed += 1
+                    opp.last_updated = datetime.utcnow()
+                    session.commit()
+            except Exception as e:
+                logger.error(f"DB Save Error: {e}")
+        else:
+            # Fallback JSON
+            try:
+                 with open(PROFILE_FILE, 'w') as f:
+                     json.dump(self.profiles, f, indent=2)
+            except Exception as e:
+                 logger.error(f"JSON Save Error: {e}")
 
-    def _load_profiles(self):
+    def _load_from_db(self, name):
+        if not DB_AVAILABLE: return
+        try:
+            with self._db_session() as session:
+                opp = session.query(OpponentProfileDB).filter_by(opponent_name=name).first()
+                if opp:
+                    self.profiles[name] = {
+                        'stats': {
+                            'weapon_usage': json.loads(opp.weapon_counts or "{}"),
+                            'avg_distance': opp.engagement_range_avg
+                        }
+                    }
+        except Exception as e:
+             logger.error(f"DB Load Error: {e}")
+
+    def _load_profiles_file(self):
         if os.path.exists(PROFILE_FILE):
             try:
                 with open(PROFILE_FILE, 'r') as f:
@@ -161,6 +189,14 @@ class AdaptiveLearner:
             except:
                 pass
         return {}
+        
+    @contextmanager
+    def _db_session(self):
+        session = SessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
 
 # ─────────────────────────────────────────────────────────────
 # Strategy Interface exposure

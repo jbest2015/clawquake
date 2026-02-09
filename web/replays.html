@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake — Replays</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .replay-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .canvas-container {
+            position: relative;
+            background: #111;
+            border: 1px solid #333;
+            width: 800px;
+            height: 600px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        input[type="range"] {
+            width: 400px;
+        }
+
+        .event-log {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            background: #222;
+            padding: 0.5rem;
+        }
+
+        .event {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-bottom: 0.2rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Replays</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Replay List -->
+        <div class="card" id="list-card">
+            <div class="card-header">
+                <h3>Available Replays</h3>
+                <button class="btn btn-outline" onclick="loadList()">Refresh</button>
+            </div>
+            <div class="card-body" id="replay-list">
+                Loading...
+            </div>
+        </div>
+
+        <!-- Player -->
+        <div class="card" id="player-card" style="display:none;">
+            <div class="card-header">
+                <h3 id="replay-title">Playing Replay</h3>
+                <button class="btn btn-outline" onclick="closePlayer()">Close</button>
+            </div>
+            <div class="card-body">
+                <div class="replay-container">
+                    <div class="canvas-container">
+                        <canvas id="map-canvas" width="800" height="600"></canvas>
+                    </div>
+                    <div class="controls">
+                        <button id="play-btn" onclick="togglePlay()">Play</button>
+                        <input type="range" id="timeline" min="0" max="100" value="0">
+                        <span id="time-display">0:00</span>
+                        <span id="speed-display">1x</span>
+                    </div>
+                    <div class="event-log" id="event-log"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const AUTH_HEADERS = {
+            'Authorization': 'Bearer ' + localStorage.getItem('clawquake_token')
+        };
+
+        let replayData = null;
+        let isPlaying = false;
+        let playInterval = null;
+        let currentTick = 0;
+        let playbackSpeed = 50; // ms per tick (20fps = 50ms)
+
+        async function loadList() {
+            try {
+                const res = await fetch('/api/replays', { headers: AUTH_HEADERS });
+                const files = await res.json();
+
+                const html = files.map(f => `
+                    <div style="display:flex; justify-content:space-between; padding:0.5rem; border-bottom:1px solid #333;">
+                        <span>${f.filename}</span>
+                        <span style="color:#666;">${new Date(f.modified).toLocaleString()}</span>
+                        <button class="btn btn-sm" onclick="playReplay('${f.filename}')">Play</button>
+                    </div>
+                `).join('');
+
+                document.getElementById('replay-list').innerHTML = html || "No replays found";
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function playReplay(filename) {
+            try {
+                const res = await fetch(`/api/replays/${filename}`, { headers: AUTH_HEADERS });
+                replayData = await res.json();
+
+                document.getElementById('list-card').style.display = 'none';
+                document.getElementById('player-card').style.display = 'block';
+                document.getElementById('replay-title').textContent = filename;
+
+                // Init timeline
+                const slider = document.getElementById('timeline');
+                slider.max = replayData.ticks.length - 1;
+                slider.value = 0;
+                slider.oninput = (e) => {
+                    currentTick = parseInt(e.target.value);
+                    renderFrame();
+                };
+
+                currentTick = 0;
+                renderFrame();
+            } catch (e) {
+                alert("Failed to load replay");
+            }
+        }
+
+        function closePlayer() {
+            stopPlay();
+            document.getElementById('player-card').style.display = 'none';
+            document.getElementById('list-card').style.display = 'block';
+        }
+
+        function togglePlay() {
+            if (isPlaying) stopPlay();
+            else startPlay();
+        }
+
+        function startPlay() {
+            isPlaying = true;
+            document.getElementById('play-btn').textContent = "Pause";
+            playInterval = setInterval(() => {
+                if (currentTick < replayData.ticks.length - 1) {
+                    currentTick++;
+                    document.getElementById('timeline').value = currentTick;
+                    renderFrame();
+                } else {
+                    stopPlay();
+                }
+            }, playbackSpeed);
+        }
+
+        function stopPlay() {
+            isPlaying = false;
+            document.getElementById('play-btn').textContent = "Play";
+            if (playInterval) clearInterval(playInterval);
+        }
+
+        function renderFrame() {
+            const ctx = document.getElementById('map-canvas').getContext('2d');
+            const width = 800;
+            const height = 600;
+
+            //Clear
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!replayData || !replayData.ticks[currentTick]) return;
+
+            const tick = replayData.ticks[currentTick];
+
+            // Map scale logic (simplified, assume Q3DM17 fit)
+            // Q3DM17 approx: -2000 to 2000
+            const scale = 0.15;
+            const offsetX = width / 2;
+            const offsetY = height / 2;
+
+            function toCanvas(x, y) {
+                return {
+                    x: (x * scale) + offsetX,
+                    y: ((-y) * scale) + offsetY // Flip Y for 2D map
+                };
+            }
+
+            // Draw My Bot
+            const myPos = tick.my_pos;
+            const p = toCanvas(myPos[0], myPos[1]);
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = '#4ade80';
+            ctx.fill();
+            ctx.fillText("Me", p.x + 8, p.y);
+
+            // Draw Others
+            if (tick.players) {
+                tick.players.forEach(pl => {
+                    if (pl.pos) {
+                        const pp = toCanvas(pl.pos[0], pl.pos[1]);
+                        ctx.beginPath();
+                        ctx.arc(pp.x, pp.y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = '#f87171';
+                        ctx.fill();
+                        ctx.fillText(pl.name || "Enemy", pp.x + 8, pp.y);
+                    }
+                });
+            }
+
+            // Update UI time
+            const seconds = Math.floor(currentTick * 0.05); // 50ms ticks
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            document.getElementById('time-display').textContent = `${mins}:${secs < 10 ? '0' + secs : secs}`;
+        }
+
+        loadList();
+    </script>
+</body>
+
+</html>

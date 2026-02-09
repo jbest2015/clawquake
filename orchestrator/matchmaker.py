@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from models import (
-    QueueEntryDB, MatchDB, MatchParticipantDB, BotDB,
+    QueueEntryDB, MatchDB, MatchParticipantDB, BotDB, ApiKeyDB,
     SessionLocal,
 )
 
@@ -343,6 +343,26 @@ class MatchMaker:
                 return strategy_path
         return os.environ.get("DEFAULT_STRATEGY", "strategies/default.py")
 
+    def _owner_has_active_key(self, db: Session, owner_id: int) -> bool:
+        """
+        True if owner has at least one key that is active and not expired.
+        No keys counts as ineligible.
+        """
+        keys = (
+            db.query(ApiKeyDB)
+            .filter(ApiKeyDB.user_id == owner_id, ApiKeyDB.is_active == 1)
+            .all()
+        )
+        if not keys:
+            return False
+
+        now = datetime.utcnow()
+        for key in keys:
+            expires_at = getattr(key, "expires_at", None)
+            if expires_at is None or expires_at > now:
+                return True
+        return False
+
     async def _run_match_with_processes(self, match_id: int, bot_ids: list[int]):
         """Launch bot processes, wait for completion, finalize match."""
         if not self.process_manager:
@@ -360,6 +380,15 @@ class MatchMaker:
             for bot_id in bot_ids:
                 bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
                 if bot:
+                    if not self._owner_has_active_key(db, bot.owner_id):
+                        logger.warning(
+                            "Match %s: skipping bot %s (id=%s) because owner %s has no active non-expired API key",
+                            match_id,
+                            bot.name,
+                            bot.id,
+                            bot.owner_id,
+                        )
+                        continue
                     bots_info.append({
                         "bot_id": bot.id,
                         "bot_name": bot.name,
@@ -367,7 +396,8 @@ class MatchMaker:
                     })
 
             if not bots_info:
-                logger.error(f"Match {match_id}: no valid bots found")
+                logger.error(f"Match {match_id}: no valid bots found after API key validation")
+                self.finalize_match(match_id)
                 return
 
             # Launch all bots

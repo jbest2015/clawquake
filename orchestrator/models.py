@@ -271,5 +271,18 @@ class TournamentResponse(BaseModel):
     current_round: int
     winner_bot_id: Optional[int]
 
+# ── Adaptive Learner DB (Anti-Gravity — Batch 4) ────────────
+
+class OpponentProfileDB(Base):
+    __tablename__ = "opponent_profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    opponent_name = Column(String, unique=True, index=True, nullable=False)
+    weapon_counts = Column(String, default="{}") # JSON
+    damage_taken = Column(String, default="{}") # JSON
+    engagement_range_avg = Column(Float, default=0.0)
+    games_analyzed = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    ttl_days = Column(Integer, default=30)
+
 # ── Create all tables (must be AFTER all model definitions) ───
 Base.metadata.create_all(bind=engine)

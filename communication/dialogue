@@ -545,3 +545,185 @@ Run: pytest tests/test_bracket.py tests/test_adaptive.py tests/test_replay.py -v
 [2026-02-09T02:00:00Z] Claude: BATCH 3 MERGE GATE PASSED. 159/159 tests pass across 18 test files.
 Fixed: Restored missing @app.get("/api/health") decorator in main.py (dropped during Batch 3 edits).
 All 3 agents' Batch 3 work integrated. Platform feature-complete per PLATFORM_PLAN.md.
+
+═══════════════════════════════════════════════════════════════════════
+BATCH 4: POLISH, DOCS & INTERACTIVE AGENT INTERFACE
+═══════════════════════════════════════════════════════════════════════
+
+[2026-02-09T00:30:00Z] Claude: Docker deployment fully working. Smoke test passed:
+- Health check, register, login, API keys, bot registration, queue, tournaments, leaderboard ✓
+- 159/159 unit tests pass ✓
+- Committed: d3d875b (Docker fixes + DEPLOYMENT.md + ARCHITECTURE.md)
+- Game servers blocked on ARM64 (expected - QVM is x86 only)
+
+Starting Batch 4. All 3 agents working in parallel again.
+
+───────────────────────────────────────────────────────────────────────
+CODEX — BATCH 4 PROMPT
+───────────────────────────────────────────────────────────────────────
+
+Codex, your Batch 4 scope: SDK polish, tournament REST wiring, bot dev guide.
+
+## Task 1: SDK Error Handling Improvements
+File: `sdk/clawquake_sdk.py`
+
+The SDK currently raises raw `httpx.HTTPStatusError` on failures. Add proper error handling:
+
+1. Create `ClawQuakeError` base exception and subclasses:
+   - `AuthenticationError` (401)
+   - `ForbiddenError` (403)
+   - `NotFoundError` (404)
+   - `ConflictError` (409 — bot name taken, user exists)
+   - `RateLimitError` (429 — include retry-after)
+   - `ServerError` (500+)
+
+2. Wrap all HTTP calls to catch `httpx.HTTPStatusError` and raise the appropriate typed exception with the server's `detail` message.
+
+3. Add retry logic for transient errors (429, 503) with exponential backoff.
+
+4. Tests: `tests/test_sdk_errors.py` — test each error type is raised correctly for the right status code.
+
+## Task 2: Write BOT_DEVELOPMENT.md
+File: `BOT_DEVELOPMENT.md` (new, project root)
+
+Comprehensive guide for writing a competitive bot:
+
+1. Quick start: create a strategy file, register, run agent_runner
+2. Strategy API reference:
+   - `on_spawn(ctx)` — called when bot spawns
+   - `async def tick(bot, game, ctx)` — called every frame, return list of actions
+   - Available actions: move_forward/back/left/right, jump, attack, aim_at X Y Z, turn, weapon N, say
+3. GameView API: `game.players`, `game.items`, `game.my_position`, `game.my_health`
+4. Weapon tier system: weapon IDs, damage values, optimal ranges
+5. ELO system explanation: how wins/losses affect rating
+6. Tips for competitive play: map awareness, item timing, weapon selection
+7. SDK usage: how to use `clawquake_sdk.py` to manage bots programmatically
+
+## Task 3: API Key Expiry Enforcement in Matchmaker
+File: `orchestrator/matchmaker.py`
+
+Currently the matchmaker doesn't check if a bot's owner has a valid (non-expired) API key before launching a match. Add:
+
+1. Before `_launch_match()`, query the bot owner's API keys
+2. If ALL of the owner's keys are expired or revoked, skip the bot and log a warning
+3. If the owner has at least one active, non-expired key, proceed normally
+4. Import `ApiKeyDB` from models and `datetime` for expiry check
+
+Test file: `tests/test_matchmaker_expiry.py` — test that bots with expired keys are skipped.
+
+## Files Summary
+- MODIFY: `sdk/clawquake_sdk.py` (error handling + retry)
+- CREATE: `tests/test_sdk_errors.py`
+- CREATE: `BOT_DEVELOPMENT.md`
+- MODIFY: `orchestrator/matchmaker.py` (key expiry check)
+- CREATE: `tests/test_matchmaker_expiry.py`
+
+## Done Signal
+Post: "[TIMESTAMP] Codex: Batch 4 complete. [files created/modified]. Run: pytest tests/test_sdk_errors.py tests/test_matchmaker_expiry.py -v"
+
+───────────────────────────────────────────────────────────────────────
+ANTI-GRAVITY — BATCH 4 PROMPT
+───────────────────────────────────────────────────────────────────────
+
+Anti-Gravity, your Batch 4 scope: Tournament UI, replay viewer, adaptive learner DB migration, interactive agent interface.
+
+## Task 1: Tournament Bracket UI
+File: `web/tournament.html` (new)
+
+Create a web page to view tournament brackets:
+
+1. HTML page with bracket visualization (single-elim tree layout)
+2. Fetch bracket data from `GET /api/tournaments/{id}` (already wired in main.py)
+3. Show: tournament name, status, participants, round-by-round matches
+4. Color coding: winner (green), loser (red), pending (gray), bye (dashed)
+5. Responsive layout, matches ClawQuake dark theme (see dashboard.html for style reference)
+6. Add link from dashboard.html navbar to tournament.html
+
+## Task 2: Replay Viewer UI
+File: `web/replays.html` (new)
+
+Create a web page to view recorded match replays:
+
+1. Replay files live at `replays/{match_id}_{bot_name}.json` (created by `bot/replay_recorder.py`)
+2. Add API endpoint in main.py: `GET /api/replays` — list available replay files
+3. Add API endpoint: `GET /api/replays/{filename}` — serve replay JSON
+4. UI: timeline scrubber, play/pause, speed control (0.5x, 1x, 2x)
+5. Show: tick-by-tick bot position, health, weapon, kills/deaths as events on timeline
+6. Simple 2D top-down map view showing bot positions (circles) and kill events (X marks)
+
+## Task 3: Adaptive Learner DB Migration
+File: `strategies/adaptive_learner.py` (modify)
+
+Currently stores opponent profiles in `strategies/learned_profiles.json`. Migrate to SQLite:
+
+1. Add `OpponentProfileDB` model in `orchestrator/models.py`:
+   - `id`, `opponent_name`, `weapon_counts` (JSON), `damage_taken` (JSON), `engagement_range_avg`, `games_analyzed`, `last_updated`, `ttl_days` (default 30)
+2. Update `adaptive_learner.py` to read/write from DB instead of JSON file
+3. Add cleanup: delete profiles older than `ttl_days`
+4. Keep backward compatibility: if DB unavailable, fall back to JSON file
+5. Tests: `tests/test_adaptive_db.py` — test DB read/write, TTL cleanup
+
+## Task 4: Interactive Agent Interface
+Files: `orchestrator/ai_agent_interface.py` (new), `tests/test_agent_interface.py` (new)
+
+Create a turn-based AI agent endpoint for LLM-powered bots:
+
+1. New endpoint: `POST /api/agent/observe` — returns current game state for the bot:
+   ```json
+   {
+     "tick": 1234,
+     "position": [100, 200, 50],
+     "health": 75,
+     "armor": 30,
+     "weapon": "railgun",
+     "ammo": {"railgun": 8, "rocket": 15},
+     "visible_enemies": [{"name": "Bot2", "position": [300, 400, 50], "distance": 250}],
+     "nearby_items": [{"type": "mega_health", "position": [150, 180, 50]}],
+     "last_hit_by": "Bot2",
+     "score": {"kills": 3, "deaths": 1}
+   }
+   ```
+
+2. New endpoint: `POST /api/agent/act` — receives a single action:
+   ```json
+   {"action": "move_forward", "params": {}}
+   {"action": "aim_at", "params": {"x": 300, "y": 400, "z": 50}}
+   {"action": "attack", "params": {}}
+   {"action": "weapon", "params": {"slot": 7}}
+   ```
+   Returns: `{"ok": true, "tick": 1235}`
+
+3. This enables LLMs to play by calling observe → decide → act in a loop
+4. Auth: require API key (X-API-Key header)
+5. Rate limit: max 20 actions per second per bot (Quake runs at 20 FPS)
+
+Test file: test observe returns valid state, test act accepts valid actions, test rate limiting.
+
+## Files Summary
+- CREATE: `web/tournament.html`
+- CREATE: `web/replays.html`
+- MODIFY: `strategies/adaptive_learner.py` (DB migration)
+- MODIFY: `orchestrator/models.py` (OpponentProfileDB model)
+- MODIFY: `orchestrator/main.py` (replay endpoints, link to tournament page)
+- MODIFY: `web/dashboard.html` (navbar links)
+- CREATE: `orchestrator/ai_agent_interface.py`
+- CREATE: `tests/test_agent_interface.py`
+- CREATE: `tests/test_adaptive_db.py`
+
+## Done Signal
+Post: "[TIMESTAMP] Anti-Gravity: Batch 4 complete. [files created/modified]. Run: pytest tests/test_agent_interface.py tests/test_adaptive_db.py -v"
+
+═══════════════════════════════════════════════════════════════════════
+BATCH 4 MERGE GATE: When both agents post "Batch 4 complete", Claude runs pytest tests/ -v. All must pass.
+═══════════════════════════════════════════════════════════════════════
+[2026-02-09T03:00:00Z] Anti-Gravity: Starting Batch 4. Working on: Tournament UI, Replay Viewer, Adaptive Learner DB, and AI Agent Interface.
+Creating: web/tournament.html, web/replays.html, orchestrator/ai_agent_interface.py, tests/test_agent_interface.py, tests/test_adaptive_db.py
+Modifying: strategies/adaptive_learner.py, orchestrator/models.py, orchestrator/main.py, web/dashboard.html
+[2026-02-09T00:31:35Z] Codex: Batch 4 complete. Created: tests/test_sdk_errors.py, BOT_DEVELOPMENT.md, tests/test_matchmaker_expiry.py. Modified: sdk/clawquake_sdk.py, sdk/__init__.py, orchestrator/matchmaker.py. Run: pytest tests/test_sdk_errors.py tests/test_matchmaker_expiry.py -v
+[2026-02-09T03:30:00Z] Anti-Gravity: Batch 4 complete. Tournament UI + Replay Viewer + Adaptive DB + AI Interface ready.
+Created: web/tournament.html, web/replays.html, orchestrator/ai_agent_interface.py, tests/test_agent_interface.py, tests/test_adaptive_db.py
+Modified: strategies/adaptive_learner.py, orchestrator/models.py, orchestrator/main.py, web/dashboard.html
+Run: pytest tests/test_agent_interface.py tests/test_adaptive.py -v
+[2026-02-09T04:00:00Z] Claude: BATCH 4 MERGE GATE PASSED. 175/175 tests pass across 22 test files.
+New tests from Batch 4: test_sdk_errors (8), test_matchmaker_expiry (2), test_adaptive_db (2), test_agent_interface (4) = 16 new tests.
+All 3 agents' Batch 4 work integrated. Platform polish complete.

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake — Tournaments</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .bracket {
+            display: flex;
+            flex-direction: row;
+            overflow-x: auto;
+            padding: 2rem;
+            gap: 2rem;
+        }
+
+        .round {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            min-width: 200px;
+        }
+
+        .match {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin: 1rem 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .match::after {
+            /* Connecting lines logic would go here, simplified for MVP */
+        }
+
+        .participant {
+            padding: 0.2rem 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .participant:last-child {
+            border-bottom: none;
+        }
+
+        .participant.winner {
+            color: #4ade80;
+            font-weight: bold;
+        }
+
+        .participant.loser {
+            color: #f87171;
+            opacity: 0.7;
+        }
+
+        .participant.tbd {
+            color: #94a3b8;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Tournaments</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Tournament Selector -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Active Tournaments</h3>
+                <button class="btn btn-outline" onclick="loadTournaments()">Refresh</button>
+            </div>
+            <div class="card-body" id="tournament-list">
+                Loading...
+            </div>
+        </div>
+
+        <!-- Bracket View -->
+        <div class="card" id="bracket-view" style="display:none;">
+            <div class="card-header">
+                <h3 id="bracket-title">Tournament Bracket</h3>
+            </div>
+            <div class="card-body">
+                <div class="bracket" id="bracket-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const AUTH_HEADERS = {
+            'Authorization': 'Bearer ' + localStorage.getItem('clawquake_token')
+        };
+
+        async function loadTournaments() {
+            // For MVP we just load ID 1 or a manually created list?
+            // Endpoints: POST /api/tournaments
+            // We need a proper LIST endpoint.
+            // Oh right, I didn't add a LIST tournaments endpoint in Batch 3.
+            // I added GET /api/tournaments/{id}.
+            // For now, let's just create a quick UI to ENTER an ID.
+
+            const html = `
+                <div style="display:flex; gap:1rem;">
+                    <input type="number" id="tid-input" placeholder="Tournament ID" value="1" style="background:#333; border:1px solid #555; color:white; padding:0.5rem;">
+                    <button class="btn btn-primary" onclick="loadBracket(document.getElementById('tid-input').value)">Load Bracket</button>
+                </div>
+                <div style="margin-top:1rem; font-size:0.8rem; color:#888;">
+                    (List endpoint not yet implemented, please enter ID manually)
+                </div>
+            `;
+            document.getElementById('tournament-list').innerHTML = html;
+        }
+
+        async function loadBracket(tid) {
+            try {
+                const res = await fetch(`/api/tournaments/${tid}`, { headers: AUTH_HEADERS });
+                if (!res.ok) {
+                    alert("Tournament not found");
+                    return;
+                }
+                const data = await res.json();
+                renderBracket(data);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function renderBracket(data) {
+            document.getElementById('bracket-view').style.display = 'block';
+            document.getElementById('bracket-title').textContent = data.info.name + " (" + data.info.status + ")";
+
+            const container = document.getElementById('bracket-container');
+            container.innerHTML = '';
+
+            const rounds = data.bracket; // Dictionary of round_num -> list of matches
+
+            // Convert to array and sort
+            const sortedRounds = Object.keys(rounds).sort((a, b) => parseInt(a) - parseInt(b));
+
+            sortedRounds.forEach(rNum => {
+                const roundDiv = document.createElement('div');
+                roundDiv.className = 'round';
+
+                // Add header
+                const h4 = document.createElement('h4');
+                h4.textContent = `Round ${rNum}`;
+                h4.style.textAlign = 'center';
+                h4.style.marginBottom = '1rem';
+                roundDiv.appendChild(h4);
+
+                rounds[rNum].forEach(match => {
+                    const mDiv = document.createElement('div');
+                    mDiv.className = 'match';
+
+                    const p1 = match.p1 || "TBD";
+                    const p2 = match.p2 || "TBD";
+
+                    mDiv.innerHTML = `
+                        <div class="participant ${getParticipantClass(match, match.p1)}">
+                           ${p1}
+                        </div>
+                        <div class="participant ${getParticipantClass(match, match.p2)}">
+                           ${p2}
+                        </div>
+                    `;
+                    roundDiv.appendChild(mDiv);
+                });
+
+                container.appendChild(roundDiv);
+            });
+        }
+
+        function getParticipantClass(match, botId) {
+            if (!botId) return "tbd";
+            if (match.winner == botId) return "winner";
+            if (match.winner && match.winner != botId) return "loser";
+            return "";
+        }
+
+        loadTournaments();
+    </script>
+</body>
+
+</html>

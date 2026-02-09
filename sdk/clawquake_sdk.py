@@ -10,11 +10,48 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.parse import urlparse
 
 import httpx
 import websockets
+
+
+@dataclass
+class ClawQuakeError(Exception):
+    message: str
+    status_code: int | None = None
+
+    def __str__(self) -> str:
+        if self.status_code is None:
+            return self.message
+        return f"{self.status_code}: {self.message}"
+
+
+class AuthenticationError(ClawQuakeError):
+    pass
+
+
+class ForbiddenError(ClawQuakeError):
+    pass
+
+
+class NotFoundError(ClawQuakeError):
+    pass
+
+
+class ConflictError(ClawQuakeError):
+    pass
+
+
+@dataclass
+class RateLimitError(ClawQuakeError):
+    retry_after: float | None = None
+
+
+class ServerError(ClawQuakeError):
+    pass
 
 
 class ClawQuakeClient:
@@ -24,11 +61,15 @@ class ClawQuakeClient:
         api_key: str | None = None,
         jwt_token: str | None = None,
         timeout: float = 10.0,
+        max_retries: int = 2,
+        backoff_base: float = 0.25,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.jwt_token = jwt_token
         self._http = httpx.Client(base_url=self.base_url, timeout=timeout)
+        self.max_retries = max(0, max_retries)
+        self.backoff_base = max(0.0, backoff_base)
 
     def close(self):
         self._http.close()
@@ -51,11 +92,84 @@ class ClawQuakeClient:
     def _request(self, method: str, path: str, **kwargs) -> Any:
         headers = kwargs.pop("headers", {})
         merged_headers = {**self._headers(), **headers}
-        response = self._http.request(method, path, headers=merged_headers, **kwargs)
-        response.raise_for_status()
-        if response.content:
-            return response.json()
-        return None
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                response = self._http.request(method, path, headers=merged_headers, **kwargs)
+                response.raise_for_status()
+                if response.content:
+                    return response.json()
+                return None
+            except httpx.HTTPStatusError as exc:
+                response = exc.response
+                status_code = response.status_code
+
+                if status_code in (429, 503) and attempt <= self.max_retries:
+                    delay = self._retry_delay(response, attempt)
+                    if delay > 0:
+                        self._sleep(delay)
+                    continue
+
+                raise self._map_http_error(exc) from exc
+            except httpx.RequestError as exc:
+                raise ServerError(str(exc), status_code=None) from exc
+
+    def _sleep(self, seconds: float):
+        import time
+        time.sleep(seconds)
+
+    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+        retry_after_header = response.headers.get("retry-after")
+        header_delay: float | None = None
+        if retry_after_header is not None:
+            try:
+                header_delay = max(0.0, float(retry_after_header))
+            except ValueError:
+                header_delay = None
+        exp_delay = self.backoff_base * (2 ** (attempt - 1))
+        if header_delay is None:
+            return exp_delay
+        return max(header_delay, exp_delay)
+
+    def _error_detail(self, response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+            if isinstance(payload, dict) and "detail" in payload:
+                detail = payload["detail"]
+                if isinstance(detail, str):
+                    return detail
+                return json.dumps(detail)
+        except Exception:
+            pass
+        if response.text:
+            return response.text
+        return response.reason_phrase or "Request failed"
+
+    def _map_http_error(self, exc: httpx.HTTPStatusError) -> ClawQuakeError:
+        response = exc.response
+        status_code = response.status_code
+        detail = self._error_detail(response)
+        if status_code == 401:
+            return AuthenticationError(detail, status_code=status_code)
+        if status_code == 403:
+            return ForbiddenError(detail, status_code=status_code)
+        if status_code == 404:
+            return NotFoundError(detail, status_code=status_code)
+        if status_code == 409:
+            return ConflictError(detail, status_code=status_code)
+        if status_code == 429:
+            retry_after = None
+            header = response.headers.get("retry-after")
+            if header is not None:
+                try:
+                    retry_after = float(header)
+                except ValueError:
+                    retry_after = None
+            return RateLimitError(detail, status_code=status_code, retry_after=retry_after)
+        if status_code >= 500:
+            return ServerError(detail, status_code=status_code)
+        return ClawQuakeError(detail, status_code=status_code)
 
     # ── Auth ────────────────────────────────────────────────
 
