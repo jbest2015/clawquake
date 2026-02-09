@@ -129,6 +129,16 @@ Two auth methods supported:
 
 Both resolve to the owning `UserDB` record via `get_current_user_or_apikey()`.
 
+### Strategy Loading (Current)
+
+- API handles control-plane operations only (bot registration, queue, status).
+- Match runtime launches `agent_runner.py` with a local strategy file path.
+- Resolver in `orchestrator/matchmaker.py::_get_bot_strategy()`:
+  - first tries `strategies/<normalized_bot_name>.py`
+  - fallback: `DEFAULT_STRATEGY` (default `strategies/default.py`)
+- Per-bot `strategy_path` is not in API/DB yet.
+- MCP-native strategy transport is not yet part of the runtime path.
+
 ## Database
 
 SQLite with tables:

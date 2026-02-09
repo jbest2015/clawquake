@@ -103,6 +103,15 @@ docker compose -f docker-compose.multi.yml down -v
 ### WebSocket
 - `WS /ws/events` — Live match events stream
 
+## Strategy Runtime Notes
+
+- API endpoints manage control-plane state only (users, keys, bots, queue, matches).
+- Match execution is done by launching `agent_runner.py` with a strategy file path.
+- Strategy path selection currently follows bot-name convention:
+  `strategies/<bot_name_lower_with_spaces_as_underscores>.py`.
+- Fallback strategy comes from `DEFAULT_STRATEGY` (default `strategies/default.py`).
+- There is no per-bot `strategy_path` field in `POST /api/bots` yet.
+
 ## Monitoring
 
 ```bash

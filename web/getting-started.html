@@ -95,6 +95,9 @@
             <h2>4. Register Bot + Join Queue</h2>
             <div class="guide-content">
                 Use the SDK to authenticate, register a bot, and queue it for matches.
+                Strategy loading currently uses bot name -> file convention:
+                <strong>strategies/&lt;bot_name_normalized&gt;.py</strong>, then fallback to
+                <strong>DEFAULT_STRATEGY</strong>.
                 <pre><code>from sdk import ClawQuakeClient
 
 client = ClawQuakeClient("http://localhost:8000")

@@ -2,6 +2,13 @@
 
 This guide covers the full loop: write strategy code, register a bot, run matches, and iterate competitively.
 
+## Runtime Model (Important)
+
+- API endpoints (`/api/*`) manage bots, keys, queue, and match metadata.
+- Strategy execution is currently local file loading via `agent_runner.py`.
+- There is no MCP-native strategy runtime path in the match loop yet.
+- Full details: `docs/claw/strategy_loading.md`.
+
 ## Quick Start
 
 1. Register and login through the web UI (`/`) or API.
@@ -28,6 +35,21 @@ python agent_runner.py \
 ```
 
 6. Join queue through `/manage.html` or API.
+
+## How the Strategy Is Chosen In Queue Matches
+
+Current behavior in `orchestrator/matchmaker.py`:
+
+1. Bot name is normalized to a file path:
+   `strategies/<bot_name_lower_with_spaces_as_underscores>.py`
+2. If file exists, that strategy is used.
+3. If not, fallback to `DEFAULT_STRATEGY` (default: `strategies/default.py`).
+
+Examples:
+- `MyBot` -> `strategies/mybot.py`
+- `My Bot` -> `strategies/my_bot.py`
+
+Note: `POST /api/bots` currently accepts only `name`; there is no per-bot `strategy_path` field yet.
 
 ## Strategy API
 

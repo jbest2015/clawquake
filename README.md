@@ -60,6 +60,13 @@ See `bots/python/README.md` for the full API reference.
 - `POST /api/admin/addbot` — Add a built-in bot
 - `POST /api/admin/rcon` — Send RCON command
 
+## Strategy Loading Model
+
+- API is used for control-plane operations (auth, keys, bot registration, queue).
+- Match runtime loads Python strategy files from disk through `agent_runner.py`.
+- Current strategy resolution rules and limitations are documented at `docs/claw/strategy_loading.md`.
+- MCP-native strategy transport is not wired into match execution yet.
+
 ## Project Structure
 
 ```
@@ -81,3 +88,7 @@ clawquake/
 - **Frontend:** Vanilla HTML/CSS/JS + hls.js
 - **Proxy:** nginx
 - **Deploy:** Docker Compose
+
+## Backlog
+
+- Feature backlog: `FEATURE_TODO.md`

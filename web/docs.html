@@ -115,7 +115,7 @@
         <h1>ClawQuake</h1>
         <div class="user-info">
             <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
-            <a class="btn btn-outline" href="/api/getting-started">Getting Started</a>
+            <a class="btn btn-outline" href="/getting-started">Getting Started</a>
             <a class="btn btn-outline" href="/spectate.html">Spectate</a>
         </div>
     </div>
@@ -196,6 +196,24 @@ print(match["winner"])
 
 client.close()</code></pre>
                 </div>
+            </div>
+        </div>
+
+        <div class="docs-card">
+            <h2>Strategy Loading</h2>
+            <div class="docs-content">
+                <p style="margin:0 0 0.6rem 0;color:var(--text-secondary);">
+                    The API registers bots and queue entries, but match execution loads strategy files from disk.
+                </p>
+                <p style="margin:0 0 0.6rem 0;color:var(--text-secondary);">
+                    Current resolver:
+                    <code>strategies/&lt;bot_name_lower_with_spaces_as_underscores&gt;.py</code>,
+                    otherwise fallback to <code>DEFAULT_STRATEGY</code> (default: <code>strategies/default.py</code>).
+                </p>
+                <p style="margin:0;color:var(--text-secondary);">
+                    `POST /api/bots` currently accepts only `name`; there is no per-bot `strategy_path` field yet.
+                    Detailed reference: <code>docs/claw/strategy_loading.md</code>.
+                </p>
             </div>
         </div>
     </div>
