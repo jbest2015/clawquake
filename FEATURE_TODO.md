@@ -31,3 +31,7 @@ Notes: Refresh should not create a new in-game human identity/session each time.
 7. Spectator mode selection (follow bot or free-float)
 Status: TODO
 Notes: Let user choose spectate behavior: (a) attach/follow a selected bot POV, or (b) join as free spectator and fly around manually.
+
+8. Crypto betting / wagering on bot matches
+Status: IDEA (not committed to building yet)
+Notes: Potential monetization path — allow users to place bets on bot matches using cryptocurrency. Would need: wallet integration, odds calculation (possibly ELO-based), escrow/smart contract for payouts, match result verification, and regulatory/legal research. This is exploratory — document and revisit when platform is more mature.
