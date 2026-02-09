@@ -470,9 +470,13 @@ class Q3Client:
         if self.state == connstate_t.CA_CONNECTED and frame.config_strings and frame.client_num >= 0:
             self.state = connstate_t.CA_PRIMED
             logger.info(f"Gamestate received, primed (client_num={self.client_num})")
-            # Q3 requires "begin" after every gamestate (initial connect AND map restarts).
-            self.queue_command(f"begin {self.server_id}")
-            logger.info(f"Sent begin for server_id={self.server_id}")
+            # QuakeJS protocol 71 enters the world from usercmd traffic and does
+            # not expose the vanilla "begin" client command.
+            if self.protocol_version != 71:
+                self.queue_command(f"begin {self.server_id}")
+                logger.info(f"Sent begin for server_id={self.server_id}")
+            else:
+                logger.debug("Protocol 71 detected: skipping begin command")
         # CA_PRIMED -> CA_ACTIVE: after receiving first snapshot post-gamestate
         if self.state == connstate_t.CA_PRIMED and frame.snapshot:
             self.state = connstate_t.CA_ACTIVE

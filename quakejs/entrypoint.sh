@@ -86,4 +86,11 @@ fi
 cd /quakejs
 
 echo "Starting QuakeJS game server..."
-exec node build/ioq3ded.js +set fs_game baseq3 +set dedicated 1 +set fs_cdn "localhost:8080" +exec server.cfg
+# QuakeJS bots currently do not provide cp/vdr pure-checksum payloads by default.
+# Force non-pure mode so usercmds are accepted and bots can fully enter the match.
+exec node build/ioq3ded.js \
+  +set fs_game baseq3 \
+  +set dedicated 1 \
+  +set fs_cdn "localhost:8080" \
+  +exec server.cfg \
+  +set sv_pure 0
