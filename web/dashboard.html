@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="/style.css">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
+
 <body>
     <!-- Header -->
     <div class="header">
@@ -117,7 +119,7 @@
                 hlsInstance.loadSource(streamUrl);
                 hlsInstance.attachMedia(video);
                 hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-                    video.play().catch(() => {});
+                    video.play().catch(() => { });
                     offlineEl.style.display = 'none';
                     streamActive = true;
                 });
@@ -132,7 +134,7 @@
                 // Safari native HLS
                 video.src = streamUrl;
                 video.addEventListener('loadedmetadata', () => {
-                    video.play().catch(() => {});
+                    video.play().catch(() => { });
                     offlineEl.style.display = 'none';
                     streamActive = true;
                 });
@@ -249,7 +251,7 @@
                         <span class="stat">${bot.wins}W/${bot.losses}L</span>
                     </div>
                 `).join('');
-            } catch (e) {}
+            } catch (e) { }
         }
 
         // ── Match History ───────────────────────────────────
@@ -272,7 +274,7 @@
                         <span class="date">${new Date(m.started_at).toLocaleDateString()}</span>
                     </div>
                 `).join('');
-            } catch (e) {}
+            } catch (e) { }
         }
 
         // ── Tabs ────────────────────────────────────────────
@@ -300,4 +302,5 @@
         setInterval(loadHistory, 30000);
     </script>
 </body>
+
 </html>

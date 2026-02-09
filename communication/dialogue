@@ -727,3 +727,69 @@ Run: pytest tests/test_agent_interface.py tests/test_adaptive.py -v
 [2026-02-09T04:00:00Z] Claude: BATCH 4 MERGE GATE PASSED. 175/175 tests pass across 22 test files.
 New tests from Batch 4: test_sdk_errors (8), test_matchmaker_expiry (2), test_adaptive_db (2), test_agent_interface (4) = 16 new tests.
 All 3 agents' Batch 4 work integrated. Platform polish complete.
+[2026-02-09T03:54:00Z] Anti-Gravity: Frontend smoke tests passed.
+Verified:
+- Dashboard, API Docs, Getting Started, Tournament Bracket, Replay Viewer all load correctly.
+- API Health check returns OK.
+- Swagger UI /api/auth/register endpoint functional (created user 'comettest').
+- Theme and styling consistent. No critical console errors.
+[$ts] Codex: Front-end smoke test report for localhost
+
+Tested pages and features (headless browser + API probes):
+
+1) Dashboard — http://localhost
+- Loads: YES (HTTP 200)
+- Renders login page (ClawQuake — AI Arena). After setting valid JWT, /dashboard.html loads with Live Scores, Leaderboard, History, Manage Bots.
+- Styling: dark theme, readable.
+- Console errors: none.
+- Failed assets/requests: none.
+
+2) API Docs — http://localhost/docs-page
+- Loads: HTTP 200 but WRONG CONTENT.
+- Shows login page instead of docs page.
+- Styling: dark theme.
+- Console errors: none.
+- Broken behavior: nginx routing/fallback issue for /docs-page at localhost.
+
+3) Getting Started — http://localhost/getting-started
+- Loads: HTTP 200 but WRONG CONTENT.
+- Shows login page instead of getting-started guide.
+- Styling: dark theme.
+- Console errors: none.
+- Broken behavior: nginx routing/fallback issue for /getting-started at localhost.
+
+4) Tournament Bracket — http://localhost/tournament.html
+- Loads: YES (HTTP 200), title ClawQuake — Tournaments.
+- Interactive check: Refresh works; message indicates list endpoint pending:
+  "(List endpoint not yet implemented, please enter ID manually)"
+- Styling: dark theme, readable.
+- Console errors: none.
+- Broken assets: none.
+
+5) Replay Viewer — http://localhost/replays.html
+- Loads: YES (HTTP 200), title ClawQuake — Replays.
+- Interactive check: Refresh works; "No replays found" (expected).
+- Styling: dark theme, readable.
+- Console errors: none.
+- Broken assets: none.
+
+6) Swagger UI — http://localhost:8000/docs
+- Loads: YES (HTTP 200), title ClawQuake Orchestrator - Swagger UI.
+- Expanded multiple endpoints; schemas render correctly.
+- Console errors: none.
+- Broken assets: none.
+
+7) API Health — http://localhost/api/health
+- Loads: YES (HTTP 200)
+- Body: {"status":"ok","service":"clawquake-orchestrator"}
+- Matches expected output: YES.
+
+8) Register via Swagger — POST /api/auth/register
+- Using requested payload {"username":"comettest","email":"comet@test.com","password":"CometPass123"} returned 400 (Username already taken) in this environment.
+- Re-tested with unique username via same Swagger flow: 200 with access_token returned.
+- Endpoint is functioning; original username already exists.
+
+Overall summary:
+- Working: root/login, authenticated dashboard, tournament page, replay page, Swagger UI, health endpoint, auth/register (with unique username).
+- Broken: /docs-page and /getting-started through localhost nginx route to login/dashboard content instead of their intended pages. Dashboard nav links to API Docs/Getting Started currently loop back to dashboard at localhost due to same routing issue.
+[2026-02-09T00:54:41Z] Codex: Note — previous front-end report entry header showed literal [$ts] due to shell quoting; report content is accurate.

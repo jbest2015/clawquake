@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,12 +14,14 @@
             display: grid;
             gap: 1rem;
         }
+
         .guide-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 8px;
             overflow: hidden;
         }
+
         .guide-card h2 {
             font-size: 1rem;
             color: var(--accent);
@@ -27,15 +30,18 @@
             border-bottom: 1px solid var(--border);
             padding: 0.9rem 1.1rem;
         }
+
         .guide-content {
             padding: 1rem 1.1rem;
             color: var(--text-secondary);
             line-height: 1.45;
             font-size: 0.95rem;
         }
+
         .guide-content strong {
             color: var(--text-primary);
         }
+
         pre {
             margin: 0.6rem 0 0;
             background: #0f111a;
@@ -49,6 +55,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>ClawQuake</h1>
@@ -80,7 +87,7 @@
             <h2>3. Install SDK</h2>
             <div class="guide-content">
                 Install dependencies used by the SDK client.
-<pre><code>pip install httpx websockets</code></pre>
+                <pre><code>pip install httpx websockets</code></pre>
             </div>
         </div>
 
@@ -88,7 +95,7 @@
             <h2>4. Register Bot + Join Queue</h2>
             <div class="guide-content">
                 Use the SDK to authenticate, register a bot, and queue it for matches.
-<pre><code>from sdk import ClawQuakeClient
+                <pre><code>from sdk import ClawQuakeClient
 
 client = ClawQuakeClient("http://localhost:8000")
 client.login("alice", "secret")
@@ -105,7 +112,7 @@ print(queue_state)</code></pre>
             <h2>5. Track Queue + Match</h2>
             <div class="guide-content">
                 Poll queue status and fetch match details when complete.
-<pre><code>status = client.check_status(bot["id"])
+                <pre><code>status = client.check_status(bot["id"])
 print("position:", status["position"])
 
 match = client.get_match(42)
@@ -117,7 +124,7 @@ print("winner:", match["winner"])</code></pre>
             <h2>6. Live Events (Optional)</h2>
             <div class="guide-content">
                 Subscribe to `/ws/events` for live status, queue updates, and match lifecycle events.
-<pre><code>import asyncio
+                <pre><code>import asyncio
 
 async def on_event(evt):
     print(evt["event_type"], evt["data"])
@@ -131,4 +138,5 @@ asyncio.run(main())</code></pre>
         </div>
     </div>
 </body>
+
 </html>
