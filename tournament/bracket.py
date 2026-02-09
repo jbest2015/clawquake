@@ -13,9 +13,14 @@ import math
 import logging
 from datetime import datetime
 from sqlalchemy import func
-from orchestrator.models import (
-    TournamentDB, TournamentParticipantDB, TournamentMatchDB, BotDB
-)
+try:
+    from orchestrator.models import (
+        TournamentDB, TournamentParticipantDB, TournamentMatchDB, BotDB
+    )
+except ModuleNotFoundError:
+    from models import (
+        TournamentDB, TournamentParticipantDB, TournamentMatchDB, BotDB
+    )
 
 logger = logging.getLogger('clawquake.tournament')
 

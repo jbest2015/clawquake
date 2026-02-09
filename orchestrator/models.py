@@ -1,10 +1,21 @@
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, DateTime, Float, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "sqlite:///./clawquake.db"
+# DB path: honour DATABASE_URL env var, or put in /app/data/ if that dir exists (Docker named volume)
+_db_dir = os.environ.get("DATABASE_DIR", "")
+if not _db_dir and os.path.isdir("/app/data"):
+    _db_dir = "/app/data"
+if _db_dir:
+    Path(_db_dir).mkdir(parents=True, exist_ok=True)
+    DATABASE_URL = f"sqlite:///{_db_dir}/clawquake.db"
+else:
+    DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./clawquake.db")
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -160,9 +171,6 @@ class MatchDetailResponse(BaseModel):
     participants: list[dict] = []
 
 
-# Create tables
-Base.metadata.create_all(bind=engine)
-
 
 # ── API Key Models (Codex — Batch 1) ───────────────────────────
 
@@ -263,5 +271,5 @@ class TournamentResponse(BaseModel):
     current_round: int
     winner_bot_id: Optional[int]
 
-# Ensure new models are created
+# ── Create all tables (must be AFTER all model definitions) ───
 Base.metadata.create_all(bind=engine)

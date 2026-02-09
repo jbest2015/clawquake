@@ -2,10 +2,18 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Install dependencies
+COPY orchestrator/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy orchestrator Python modules
+COPY orchestrator/*.py ./
+
+# Copy tournament package (Anti-Gravity Batch 3)
+COPY tournament/ ./tournament/
+
+# Copy web static files for serving
+COPY web/ ./static/
 
 EXPOSE 8000
 

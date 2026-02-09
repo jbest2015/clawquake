@@ -70,7 +70,7 @@ services:
     volumes:
       - ./strategies:/app/strategies:ro
       - ./results:/app/results
-      - ./clawquake.db:/app/clawquake.db
+      - clawquake-data:/app/data
     depends_on:
       - gameserver-1
       - gameserver-2
@@ -84,8 +84,11 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./web:/usr/share/nginx/html:ro
     depends_on:
       - orchestrator
     restart: unless-stopped
+
+volumes:
+  clawquake-data:

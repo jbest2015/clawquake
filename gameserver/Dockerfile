@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openarena-data \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy server config
-COPY server.cfg /usr/share/games/quake3/baseoa/server.cfg
+# Copy server config (OpenArena uses /usr/share/games/openarena, not quake3)
+COPY server.cfg /usr/share/games/openarena/baseoa/server.cfg
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
