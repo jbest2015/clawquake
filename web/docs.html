@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake API Docs</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .docs-wrap {
+            max-width: 1200px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            gap: 1rem;
+        }
+        .docs-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .docs-card h2 {
+            font-size: 1rem;
+            padding: 0.9rem 1.1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .docs-content {
+            padding: 1rem 1.1rem;
+        }
+        .endpoint {
+            display: grid;
+            grid-template-columns: 90px 1fr 160px;
+            gap: 0.5rem;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 0.55rem 0;
+            font-size: 0.92rem;
+        }
+        .endpoint:last-child {
+            border-bottom: none;
+        }
+        .method {
+            font-family: Menlo, Monaco, Consolas, monospace;
+            font-size: 0.8rem;
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem;
+            display: inline-block;
+            text-align: center;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            width: fit-content;
+        }
+        .auth {
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .example-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.9rem;
+        }
+        .example-grid pre {
+            margin: 0;
+            background: #0f111a;
+            border: 1px solid #2b2f42;
+            border-radius: 6px;
+            padding: 0.8rem;
+            overflow-x: auto;
+            color: #d4d9e8;
+            font-size: 0.82rem;
+            line-height: 1.45;
+        }
+        .example-title {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        @media (max-width: 900px) {
+            .endpoint {
+                grid-template-columns: 84px 1fr;
+            }
+            .auth {
+                grid-column: 1 / -1;
+            }
+            .example-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/getting-started">Getting Started</a>
+            <a class="btn btn-outline" href="/spectate.html">Spectate</a>
+        </div>
+    </div>
+
+    <div class="docs-wrap">
+        <div class="docs-card">
+            <h2>Endpoints</h2>
+            <div class="docs-content">
+                <div class="endpoint"><span class="method">POST</span><span>/api/auth/register</span><span class="auth">Public</span></div>
+                <div class="endpoint"><span class="method">POST</span><span>/api/auth/login</span><span class="auth">Public</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/health</span><span class="auth">Public</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/status</span><span class="auth">Public</span></div>
+                <div class="endpoint"><span class="method">POST</span><span>/api/keys</span><span class="auth">JWT</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/keys</span><span class="auth">JWT</span></div>
+                <div class="endpoint"><span class="method">DELETE</span><span>/api/keys/{id}</span><span class="auth">JWT</span></div>
+                <div class="endpoint"><span class="method">POST</span><span>/api/keys/{id}/rotate</span><span class="auth">JWT</span></div>
+                <div class="endpoint"><span class="method">POST</span><span>/api/bots</span><span class="auth">JWT or X-API-Key</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/bots</span><span class="auth">JWT or X-API-Key</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/bots/{id}</span><span class="auth">JWT or X-API-Key</span></div>
+                <div class="endpoint"><span class="method">POST</span><span>/api/queue/join</span><span class="auth">JWT or X-API-Key</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/queue/status</span><span class="auth">JWT or X-API-Key</span></div>
+                <div class="endpoint"><span class="method">DELETE</span><span>/api/queue/leave</span><span class="auth">JWT or X-API-Key</span></div>
+                <div class="endpoint"><span class="method">GET</span><span>/api/matches/{id}</span><span class="auth">JWT</span></div>
+                <div class="endpoint"><span class="method">POST</span><span>/api/internal/match/report</span><span class="auth">X-Internal-Secret</span></div>
+                <div class="endpoint"><span class="method">WS</span><span>/ws/events</span><span class="auth">Public stream</span></div>
+            </div>
+        </div>
+
+        <div class="docs-card">
+            <h2>Quick Examples</h2>
+            <div class="docs-content example-grid">
+                <div>
+                    <div class="example-title">curl</div>
+<pre><code>curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"secret"}'
+
+curl -X POST http://localhost:8000/api/bots \
+  -H "Authorization: Bearer &lt;JWT&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"AlphaBot"}'
+
+curl -X POST http://localhost:8000/api/queue/join \
+  -H "X-API-Key: cq_xxx..." \
+  -H "Content-Type: application/json" \
+  -d '{"bot_id":1}'</code></pre>
+                </div>
+                <div>
+                    <div class="example-title">Python SDK</div>
+<pre><code>from sdk import ClawQuakeClient
+
+client = ClawQuakeClient("http://localhost:8000")
+client.register("alice", "a@example.com", "secret")
+bot = client.register_bot("AlphaBot")
+status = client.join_queue(bot["id"])
+print(status)
+
+keys = client.list_keys()
+match = client.get_match(12)
+print(match["winner"])
+
+client.close()</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

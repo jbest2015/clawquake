@@ -12,6 +12,7 @@ from queue import SimpleQueue
 
 from fastapi import FastAPI, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -33,6 +34,10 @@ from rcon_pool import RconPool
 from process_manager import BotProcessManager
 from matchmaker import MatchMaker
 from websocket_hub import WebSocketHub
+from tournament.bracket import TournamentBracket
+from models import (
+    TournamentCreate, TournamentJoin, TournamentResponse
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawquake")
@@ -431,11 +436,137 @@ def get_match_detail(
     )
 
 
-# ── Health ──────────────────────────────────────────────────────
+
+# ── Tournament Endpoints (Anti-Gravity — Batch 3) ──────────────
+
+@app.post("/api/tournaments", response_model=TournamentResponse)
+def create_tournament(
+    t: TournamentCreate,
+    user: UserDB = Depends(get_current_user), # Any user can create
+    db: Session = Depends(get_db),
+):
+    system = TournamentBracket(db)
+    bracket = system.create_tournament(t.name, t.format)
+    return TournamentResponse(
+        id=bracket.id, name=bracket.name, format=bracket.format,
+        status="pending", participant_count=0, current_round=0,
+        winner_bot_id=None
+    )
+
+@app.post("/api/tournaments/{tid}/join")
+def join_tournament(
+    tid: int,
+    join: TournamentJoin,
+    user: UserDB = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    system = TournamentBracket(db)
+    bot = db.query(BotDB).filter_by(id=join.bot_id).first()
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+        
+    # Check ownership
+    if bot.owner_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail="Not your bot")
+        
+    success = system.add_participant(tid, join.bot_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to join (already present or tournament active)")
+    return {"joined": True, "bot": bot.name}
+
+@app.post("/api/tournaments/{tid}/start")
+def start_tournament(
+    tid: int,
+    user: UserDB = Depends(get_current_user), # Admin only? Or owner?
+    db: Session = Depends(get_db),
+):
+    # check if user is admin or created the tournament? 
+    # For now, require admin
+    if not user.is_admin:
+         raise HTTPException(status_code=403, detail="Admin required to start tournament")
+         
+    system = TournamentBracket(db)
+    ok = system.start_tournament(tid)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not start (not enough players or already started)")
+    return {"started": True}
+
+@app.get("/api/tournaments/{tid}")
+def get_tournament(
+    tid: int,
+    db: Session = Depends(get_db),
+):
+    system = TournamentBracket(db)
+    # Get tournament info
+    from models import TournamentDB, TournamentParticipantDB
+    t = db.query(TournamentDB).get(tid)
+    if not t:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+        
+    count = db.query(TournamentParticipantDB).filter_by(tournament_id=tid).count()
+    bracket_data = system.get_bracket(tid)
+    
+    # Format matches for JSON
+    rounds_json = {}
+    for r_num, matches in bracket_data.items():
+        m_list = []
+        for m in matches:
+            m_list.append({
+                "match_id": m.id,
+                "match_num": m.match_num,
+                "p1": m.player1_bot_id,
+                "p2": m.player2_bot_id,
+                "winner": m.winner_bot_id,
+                "next": m.next_match_id
+            })
+        rounds_json[r_num] = m_list
+        
+    return {
+        "info": TournamentResponse(
+             id=t.id, name=t.name, format=t.format, status=t.status,
+             participant_count=count, current_round=t.current_round, 
+             winner_bot_id=t.winner_bot_id
+        ),
+        "bracket": rounds_json
+    }
+
+@app.post("/api/tournaments/{tid}/matches/{mid}/result")
+def record_tournament_match(
+    tid: int, mid: int, 
+    winner_bot_id: int,
+    x_internal_secret: str = Header(..., alias="X-Internal-Secret"),
+    db: Session = Depends(get_db),
+):
+    if x_internal_secret != INTERNAL_SECRET:
+         raise HTTPException(status_code=403)
+         
+    system = TournamentBracket(db)
+    system.record_result(tid, mid, winner_bot_id)
+    return {"ok": True}
 
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "clawquake-orchestrator"}
+
+
+# ── Docs Pages ───────────────────────────────────────────────────
+
+@app.get("/docs-page")
+def docs_page():
+    if os.path.isdir(STATIC_DIR):
+        path = os.path.join(STATIC_DIR, "docs.html")
+        if os.path.exists(path):
+            return FileResponse(path)
+    raise HTTPException(status_code=404, detail="docs.html not found")
+
+
+@app.get("/getting-started")
+def getting_started_page():
+    if os.path.isdir(STATIC_DIR):
+        path = os.path.join(STATIC_DIR, "getting-started.html")
+        if os.path.exists(path):
+            return FileResponse(path)
+    raise HTTPException(status_code=404, detail="getting-started.html not found")
 
 
 # ── Static Files (must be last — catch-all) ─────────────────────

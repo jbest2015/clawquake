@@ -208,5 +208,60 @@ class BotRegister(BaseModel):
     name: str
 
 
-# Ensure appended models are included even if create_all above already ran.
+
+# ── Tournament Models (Anti-Gravity — Batch 3) ──────────────
+
+class TournamentDB(Base):
+    __tablename__ = "tournaments"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    format = Column(String, default="single_elim") # single_elim, double_elim
+    status = Column(String, default="pending") # pending, active, completed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    winner_bot_id = Column(Integer, nullable=True) # FK bots.id
+    current_round = Column(Integer, default=0)
+
+class TournamentParticipantDB(Base):
+    __tablename__ = "tournament_participants"
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, nullable=False, index=True) # FK tournaments.id
+    bot_id = Column(Integer, nullable=False) # FK bots.id
+    seed = Column(Integer, nullable=True)
+    eliminated = Column(Integer, default=0) # boolean
+    rank = Column(Integer, nullable=True) # Final placement
+
+class TournamentMatchDB(Base):
+    __tablename__ = "tournament_matches"
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, nullable=False, index=True) # FK tournaments.id
+    round_num = Column(Integer, nullable=False)
+    match_num = Column(Integer, nullable=False) # ID within round
+    player1_bot_id = Column(Integer, nullable=True) # None = TBD/Bye
+    player2_bot_id = Column(Integer, nullable=True)
+    winner_bot_id = Column(Integer, nullable=True)
+    next_match_id = Column(Integer, nullable=True) # For bracket linking (optional)
+    game_match_id = Column(Integer, nullable=True) # FK matches.id (actual game)
+
+# ── Tournament Pydantic Schemas ─────────────────────────────
+
+class TournamentCreate(BaseModel):
+    name: str
+    format: str = "single_elim"
+    seed_by_elo: bool = True
+
+class TournamentJoin(BaseModel):
+    bot_id: int
+
+class TournamentResponse(BaseModel):
+    id: int
+    name: str
+    format: str
+    status: str
+    participant_count: int
+    current_round: int
+    winner_bot_id: Optional[int]
+
+# Ensure new models are created
 Base.metadata.create_all(bind=engine)

@@ -52,6 +52,7 @@ from bot.agent import ClawQuakeAgent
 from bot.strategy import StrategyLoader
 from bot.result_reporter import ResultReporter
 from bot.event_stream import EventStream
+from bot.replay_recorder import ReplayRecorder
 
 logging.basicConfig(
     level=logging.INFO,
@@ -132,6 +133,12 @@ async def run(args):
     if args.orchestrator_url and args.match_id and args.internal_secret:
         event_stream = EventStream(args.orchestrator_url, args.internal_secret, args.match_id)
 
+    # Replay Recorder
+    replay = None
+    if args.replay:
+        mid = args.match_id or "local"
+        replay = ReplayRecorder(mid, args.name)
+
     # Wire up kill tracking
     async def on_kill(bot, killer, victim, weapon):
         tracker.record_kill(killer, victim, weapon)
@@ -143,6 +150,10 @@ async def run(args):
         # Emit real-time event
         if event_stream:
             event_stream.emit_kill(killer, victim, weapon)
+            
+        # Record replay event
+        if replay:
+            replay.record_event('kill', {'killer': killer, 'victim': victim, 'weapon': weapon})
 
     agent.bot.on_kill = on_kill
 
@@ -152,12 +163,18 @@ async def run(args):
         logger.info(f"CHAT [{sender}]: {message}")
         if event_stream:
             event_stream.emit_chat(sender, message)
+        if replay:
+            replay.record_event('chat', {'sender': sender, 'message': message})
 
     agent.bot.on_chat_received = on_chat
 
     # Wire up strategy tick
     async def strategy_tick(bot_obj, game):
         tracker.ticks += 1
+        
+        # Replay tick
+        if replay:
+            replay.record_tick(game)
 
         # Check for strategy hot-reload periodically
         if tracker.ticks % (20 * RELOAD_CHECK_SECONDS) == 0:
@@ -213,6 +230,9 @@ async def run(args):
         except Exception:
             pass
         task.cancel()
+        
+        if replay:
+            replay.save()
 
         # Build results
         results = tracker.to_dict()
@@ -286,6 +306,8 @@ Examples:
                         help='Orchestrator URL (e.g. http://localhost:8000)')
     parser.add_argument('--internal-secret', default=None,
                         help='Internal secret for reporting results')
+    parser.add_argument('--replay', action='store_true',
+                        help='Enable replay recording')
 
     args = parser.parse_args()
 

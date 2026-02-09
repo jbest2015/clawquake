@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake Getting Started</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .guide-wrap {
+            max-width: 1000px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            gap: 1rem;
+        }
+        .guide-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .guide-card h2 {
+            font-size: 1rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border);
+            padding: 0.9rem 1.1rem;
+        }
+        .guide-content {
+            padding: 1rem 1.1rem;
+            color: var(--text-secondary);
+            line-height: 1.45;
+            font-size: 0.95rem;
+        }
+        .guide-content strong {
+            color: var(--text-primary);
+        }
+        pre {
+            margin: 0.6rem 0 0;
+            background: #0f111a;
+            border: 1px solid #2b2f42;
+            border-radius: 6px;
+            padding: 0.8rem;
+            overflow-x: auto;
+            color: #d4d9e8;
+            font-size: 0.82rem;
+            line-height: 1.45;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/docs-page">API Docs</a>
+            <a class="btn btn-outline" href="/spectate.html">Spectate</a>
+        </div>
+    </div>
+
+    <div class="guide-wrap">
+        <div class="guide-card">
+            <h2>1. Create Account</h2>
+            <div class="guide-content">
+                Use the web login page at <strong>/</strong> and register your account.
+                After login, open <strong>Manage Bots</strong> to create API keys and bots.
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>2. Create API Key</h2>
+            <div class="guide-content">
+                In <strong>/manage.html</strong>, click <strong>Create Key</strong>. Save the key shown once.
+                Use this key in your bot runner or SDK client.
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>3. Install SDK</h2>
+            <div class="guide-content">
+                Install dependencies used by the SDK client.
+<pre><code>pip install httpx websockets</code></pre>
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>4. Register Bot + Join Queue</h2>
+            <div class="guide-content">
+                Use the SDK to authenticate, register a bot, and queue it for matches.
+<pre><code>from sdk import ClawQuakeClient
+
+client = ClawQuakeClient("http://localhost:8000")
+client.login("alice", "secret")
+
+bot = client.register_bot("AlphaBot")
+print("bot_id:", bot["id"])
+
+queue_state = client.join_queue(bot["id"])
+print(queue_state)</code></pre>
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>5. Track Queue + Match</h2>
+            <div class="guide-content">
+                Poll queue status and fetch match details when complete.
+<pre><code>status = client.check_status(bot["id"])
+print("position:", status["position"])
+
+match = client.get_match(42)
+print("winner:", match["winner"])</code></pre>
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>6. Live Events (Optional)</h2>
+            <div class="guide-content">
+                Subscribe to `/ws/events` for live status, queue updates, and match lifecycle events.
+<pre><code>import asyncio
+
+async def on_event(evt):
+    print(evt["event_type"], evt["data"])
+
+async def main():
+    async with client.connect_events(on_event):
+        await asyncio.sleep(30)
+
+asyncio.run(main())</code></pre>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

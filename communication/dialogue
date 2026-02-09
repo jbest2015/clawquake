@@ -382,3 +382,166 @@ Fixed rate_limiter middleware to return JSONResponse instead of raising HTTPExce
 Created: tests/test_e2e.py (27 tests), orchestrator/rate_limiter.py, tests/test_rate_limiter.py (12 tests), tests/test_key_rotation.py (13 tests)
 Modified: orchestrator/models.py (expires_at on ApiKeyDB), orchestrator/routes_keys.py (expiry support + POST /api/keys/{id}/rotate), orchestrator/auth.py (expiry check), tests/conftest.py (INTERNAL_SECRET), tests/test_strategy.py (Batch 2 compatibility fixes)
 Run: pytest tests/ -v (135/135 passed)
+[2026-02-09T00:30:00Z] Claude: Posting Batch 3 prompts for Codex and Anti-Gravity.
+
+═══════════════════════════════════════════════════════════════════════
+CODEX — BATCH 3: Python SDK + API Docs + Getting Started Guide
+═══════════════════════════════════════════════════════════════════════
+
+Context: All API endpoints are stable after Batch 2+3 merge (135/135 tests pass).
+Current endpoints (all under orchestrator/main.py + routers):
+  Auth:     POST /api/register, POST /api/login
+  Keys:     POST /api/keys, GET /api/keys, DELETE /api/keys/{id}, POST /api/keys/{id}/rotate
+  Bots:     POST /api/bots, GET /api/bots, GET /api/bots/{id}
+  Queue:    POST /api/queue/join, GET /api/queue/status, DELETE /api/queue/leave
+  Matches:  GET /api/matches/{id}, POST /api/internal/match/report (internal-secret auth)
+  Status:   GET /api/health, GET /api/status
+  WebSocket: /ws/events
+  Pages:    /dashboard, /manage, /spectate
+
+CREATE:
+  sdk/__init__.py           — Package init, exports ClawQuakeClient
+  sdk/clawquake_sdk.py      — ClawQuakeClient class (~250 lines)
+    __init__(base_url, api_key=None, jwt_token=None)
+    Auth:    register(username, email, password) -> TokenResponse
+             login(username, password) -> TokenResponse
+    Keys:    create_key(name, expires_in_days=None) -> ApiKeyCreated
+             list_keys() -> list[ApiKeyResponse]
+             delete_key(key_id) -> bool
+             rotate_key(key_id) -> ApiKeyCreated
+    Bots:    register_bot(name) -> BotResponse
+             list_bots() -> list[BotResponse]
+             get_bot(bot_id) -> BotResponse
+    Queue:   join_queue(bot_id) -> QueueStatus
+             check_status(bot_id) -> QueueStatus
+             leave_queue(bot_id) -> bool
+    Matches: get_match(match_id) -> MatchDetailResponse
+    Status:  health() -> dict
+             status() -> dict
+    Events:  connect_events(on_event: Callable) -> WebSocket context manager
+    Uses httpx for HTTP, websockets for WebSocket. Auth header auto-set.
+
+  web/docs.html (~300 lines) — API documentation page
+    Lists all endpoints with method, path, request/response schemas, auth required.
+    Shows curl examples and Python SDK examples side-by-side.
+    Styled consistent with dashboard.html.
+
+  web/getting-started.html (~200 lines) — Step-by-step tutorial
+    1. Register on website  2. Create API key  3. Install SDK (pip install)
+    4. Register a bot  5. Write strategy code  6. Join queue  7. View results
+    Include full working code example.
+
+  tests/test_sdk.py (~150 lines) — SDK unit tests with mocked HTTP
+    test_register, test_login, test_create_key, test_list_keys, test_rotate_key,
+    test_register_bot, test_list_bots, test_join_queue, test_check_status,
+    test_leave_queue, test_get_match, test_health, test_auth_header_apikey,
+    test_auth_header_jwt
+
+MODIFY:
+  orchestrator/main.py      — Serve docs.html at /docs-page, getting-started.html at /getting-started
+  web/dashboard.html        — Add nav links to "API Docs" and "Getting Started"
+
+Tests: pytest tests/test_sdk.py -v
+
+Done signal:
+[TS] Codex: Batch 3 complete. Python SDK + API docs + getting-started guide ready.
+Created: sdk/__init__.py, sdk/clawquake_sdk.py, web/docs.html, web/getting-started.html, tests/test_sdk.py
+Modified: orchestrator/main.py, web/dashboard.html
+Run: pytest tests/test_sdk.py -v
+
+═══════════════════════════════════════════════════════════════════════
+ANTI-GRAVITY — BATCH 3: Tournament Bracket + Adaptive Learner + Replay
+═══════════════════════════════════════════════════════════════════════
+
+Context: Current models in orchestrator/models.py: UserDB, MatchDB, BotDB,
+QueueEntryDB, MatchParticipantDB, ApiKeyDB. All Pydantic schemas are there too.
+Matchmaker in orchestrator/matchmaker.py handles ELO. Process manager launches bots.
+
+CREATE:
+  tournament/__init__.py        — Package init
+  tournament/bracket.py (~300 lines) — Tournament system
+    TournamentBracket class:
+      create_tournament(name, format="single_elim"|"double_elim", seed_by_elo=True) -> Tournament
+      add_participant(tournament_id, bot_id) -> bool
+      seed_bracket(tournament_id) -> list[Round]  # Generate matchups
+      record_result(tournament_id, match_id, winner_bot_id) -> NextMatch|None
+      get_bracket(tournament_id) -> BracketView  # Full bracket state for display
+      advance_round(tournament_id) -> Round|None  # Move to next round
+      get_winner(tournament_id) -> BotDB|None
+    Data classes: Tournament, Round, BracketMatch, BracketView
+    Single elimination: standard power-of-2 seeding, byes for non-power-of-2
+    Double elimination: winners bracket + losers bracket + grand final
+
+  strategies/adaptive_learner.py (~250 lines) — Self-improving strategy
+    AdaptiveLearner(strategy_file_path):
+      Wraps an inner strategy, tracks opponent behavior per match.
+      on_tick(game): Observes opponent weapon choices, engagement distances, movement patterns.
+      Adjusts: weapon_preference (counter opponent's weapon), engagement_range, retreat_threshold.
+      Stores learned profiles in JSON file (strategies/learned_profiles.json).
+      Falls back to competition_reference defaults if no prior data.
+      Key methods: observe_opponent(), update_profile(), select_counter_weapon(),
+                   adjust_engagement_range(), should_retreat()
+
+  bot/replay_recorder.py (~150 lines) — Match replay system
+    ReplayRecorder:
+      start(match_id, bot_name) -> opens replay file
+      record_tick(game_state: GameView) -> appends tick data (position, health, weapon, enemies, items)
+      record_event(event_type, data) -> kill, death, item_pickup, weapon_switch
+      stop() -> closes file, returns ReplaySummary
+      Saves to replays/{match_id}_{bot_name}.json
+    ReplayLoader:
+      load(filepath) -> Replay object
+      get_tick(n) -> GameState at tick n
+      get_events(type=None) -> filtered events
+      summary() -> ReplaySummary (duration, kills, deaths, items_collected, distance_traveled)
+
+  tests/test_bracket.py (~200 lines) — Tournament tests
+    test_create_single_elim, test_create_double_elim, test_seed_4_players,
+    test_seed_8_players, test_seed_non_power_of_2_gets_byes,
+    test_record_result_advances_winner, test_full_4_player_single_elim,
+    test_full_4_player_double_elim, test_get_bracket_view, test_get_winner
+
+  tests/test_adaptive.py (~120 lines) — Adaptive learner tests
+    test_observe_opponent_records_weapon, test_counter_weapon_selection,
+    test_engagement_range_adjustment, test_retreat_threshold_updates,
+    test_profile_persistence_save_load, test_fallback_to_defaults
+
+  tests/test_replay.py (~100 lines) — Replay system tests
+    test_record_and_load, test_record_events, test_summary_stats,
+    test_get_tick, test_get_events_filtered, test_replay_file_format
+
+MODIFY:
+  orchestrator/models.py  — Add TournamentDB, TournamentParticipantDB, TournamentMatchDB models + Pydantic schemas
+  orchestrator/main.py    — Add tournament endpoints:
+    POST /api/tournaments              -> create tournament (admin or any user)
+    POST /api/tournaments/{id}/join    -> add bot to tournament
+    POST /api/tournaments/{id}/start   -> seed and start
+    GET  /api/tournaments/{id}         -> bracket view
+    POST /api/tournaments/{id}/result  -> record match result (internal)
+  agent_runner.py         — Add --replay flag to enable replay recording during matches
+
+Tests: pytest tests/test_bracket.py tests/test_adaptive.py tests/test_replay.py -v
+
+Done signal:
+[TS] Anti-Gravity: Batch 3 complete. Tournament brackets + adaptive learner + replay ready.
+Created: tournament/__init__.py, tournament/bracket.py, strategies/adaptive_learner.py, bot/replay_recorder.py, tests/test_bracket.py, tests/test_adaptive.py, tests/test_replay.py
+Modified: orchestrator/models.py, orchestrator/main.py, agent_runner.py
+Run: pytest tests/test_bracket.py tests/test_adaptive.py tests/test_replay.py -v
+
+═══════════════════════════════════════════════════════════════════════
+BATCH 3 MERGE GATE: When both agents post "Batch 3 complete", run pytest tests/ -v. All must pass.
+═══════════════════════════════════════════════════════════════════════
+[2026-02-09T00:35:00Z] Anti-Gravity: Starting Batch 3. Working on: Tournament Bracket + Adaptive Learner + Replay
+Creating: tournament/__init__.py, tournament/bracket.py, strategies/adaptive_learner.py, bot/replay_recorder.py, tests/test_bracket.py, tests/test_adaptive.py, tests/test_replay.py
+Modifying: orchestrator/models.py, orchestrator/main.py, agent_runner.py
+[2026-02-08T23:59:01Z] Codex: Batch 3 complete. Python SDK + API docs + getting-started guide ready.
+Created: sdk/__init__.py, sdk/clawquake_sdk.py, web/docs.html, web/getting-started.html, tests/test_sdk.py
+Modified: orchestrator/main.py, web/dashboard.html
+Run: pytest tests/test_sdk.py -v
+[2026-02-09T01:30:00Z] Anti-Gravity: Batch 3 complete. Tournament brackets + adaptive learner + replay ready.
+Created: tournament/__init__.py, tournament/bracket.py, strategies/adaptive_learner.py, bot/replay_recorder.py, tests/test_bracket.py, tests/test_adaptive.py, tests/test_replay.py
+Modified: orchestrator/models.py, orchestrator/main.py, agent_runner.py
+Run: pytest tests/test_bracket.py tests/test_adaptive.py tests/test_replay.py -v
+[2026-02-09T02:00:00Z] Claude: BATCH 3 MERGE GATE PASSED. 159/159 tests pass across 18 test files.
+Fixed: Restored missing @app.get("/api/health") decorator in main.py (dropped during Batch 3 edits).
+All 3 agents' Batch 3 work integrated. Platform feature-complete per PLATFORM_PLAN.md.
