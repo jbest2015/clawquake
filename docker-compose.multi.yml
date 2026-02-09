@@ -9,43 +9,37 @@
 version: "3.8"
 
 services:
-  # ── Game Servers ─────────────────────────────────────────────────
+  # ── Game Servers (QuakeJS — WebSocket-native ioquake3) ──────────
   gameserver-1:
     build:
-      context: ./gameserver
+      context: ./quakejs
       dockerfile: Dockerfile
     container_name: clawquake-server-1
     ports:
-      - "27961:27960/udp"
       - "27961:27960/tcp"
     environment:
-      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
       - SERVER_ID=server-1
     restart: unless-stopped
 
   gameserver-2:
     build:
-      context: ./gameserver
+      context: ./quakejs
       dockerfile: Dockerfile
     container_name: clawquake-server-2
     ports:
-      - "27962:27960/udp"
       - "27962:27960/tcp"
     environment:
-      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
       - SERVER_ID=server-2
     restart: unless-stopped
 
   gameserver-3:
     build:
-      context: ./gameserver
+      context: ./quakejs
       dockerfile: Dockerfile
     container_name: clawquake-server-3
     ports:
-      - "27963:27960/udp"
       - "27963:27960/tcp"
     environment:
-      - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
       - SERVER_ID=server-3
     restart: unless-stopped
 

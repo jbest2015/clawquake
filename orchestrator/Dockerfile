@@ -12,6 +12,12 @@ COPY orchestrator/*.py ./
 # Copy tournament package (Anti-Gravity Batch 3)
 COPY tournament/ ./tournament/
 
+# Copy bot package + agent runner (for process_manager to spawn bot subprocesses)
+COPY bot/ ./bot/
+COPY agent_runner.py .
+COPY bot/requirements.txt ./bot-requirements.txt
+RUN pip install --no-cache-dir -r bot-requirements.txt
+
 # Copy web static files for serving
 COPY web/ ./static/
 

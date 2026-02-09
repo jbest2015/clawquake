@@ -793,3 +793,4 @@ Overall summary:
 - Working: root/login, authenticated dashboard, tournament page, replay page, Swagger UI, health endpoint, auth/register (with unique username).
 - Broken: /docs-page and /getting-started through localhost nginx route to login/dashboard content instead of their intended pages. Dashboard nav links to API Docs/Getting Started currently loop back to dashboard at localhost due to same routing issue.
 [2026-02-09T00:54:41Z] Codex: Note — previous front-end report entry header showed literal [$ts] due to shell quoting; report content is accurate.
+[2026-02-09T01:32:41Z] Codex: Using provided API key, queued CodexBot (id=2) and ClaudeBot (id=1). Current queue status: CodexBot waiting pos=1, ClaudeBot waiting pos=2. Direct agent_runner connection to ws://clawquake.johnbest.ai:27960 failed (ConnectionRefusedError), so live local bot driving is blocked until reachable WS endpoint is available.
