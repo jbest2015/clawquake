@@ -1,3 +1,4 @@
+
 """
 Competition Reference Strategy for ClawQuake.
 
@@ -114,13 +115,21 @@ async def tick(bot, game, ctx):
         if best_weapon != my_weapon:
             actions.append(f"weapon {best_weapon}")
             
-        # Aiming
-        # Predict target position based on velocity (simple linear prediction)
-        # Note: GameView players dict doesn't have velocity currently, so aim at position
-        # Refinement: Add Z-offset for height (aim at chest/head)
-        aim_pos = list(target['position'])
-        aim_pos[2] += 20 # Aim bit higher than origin (feet)
-        bot.aim_at(aim_pos)
+        # Aiming - Lead Prediction
+        try:
+            aim_pos = bot.combat_analyzer.get_lead_position(target, best_weapon)
+            if not aim_pos:
+                aim_pos = list(target['position'])
+            else:
+                aim_pos = list(aim_pos)
+            
+            aim_pos[2] += 15 # Chest/Head offset
+            bot.aim_at(aim_pos)
+        except Exception:
+            # Fallback
+            aim_pos = list(target['position'])
+            aim_pos[2] += 20 
+            bot.aim_at(aim_pos)
         
         # Fire control
         # Only shoot if reasonably aimed? For now, spray and pray.
@@ -256,4 +265,3 @@ def _roam(game, ctx, actions):
     # Since we can't easily set absolute yaw without `look()`, 
     # we'll just turn slowly.
     actions.append("turn_right 2")
-

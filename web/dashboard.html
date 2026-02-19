@@ -115,18 +115,35 @@
         // ── Dashboard Layout Controls ─────────────────────
         const dashboardEl = document.querySelector('.dashboard');
         const statsToggleBtn = document.getElementById('stats-toggle-btn');
+        const directSpectate = document.getElementById('direct-spectate');
         const statsPrefKey = 'clawquake_stats_collapsed';
+
+        function focusGameFrame() {
+            try { directSpectate.focus(); } catch (e) { }
+            try {
+                if (directSpectate.contentWindow) {
+                    directSpectate.contentWindow.focus();
+                }
+            } catch (e) { }
+        }
 
         function setStatsCollapsed(collapsed) {
             dashboardEl.classList.toggle('stats-collapsed', collapsed);
             statsToggleBtn.textContent = collapsed ? 'Show Stats' : 'Hide Stats';
             statsToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
             try { localStorage.setItem(statsPrefKey, collapsed ? '1' : '0'); } catch (e) { }
+            // Preserve iframe control focus after layout change.
+            setTimeout(focusGameFrame, 0);
         }
 
+        // Prevent button from retaining keyboard focus and stealing game input.
+        statsToggleBtn.addEventListener('mousedown', (evt) => {
+            evt.preventDefault();
+        });
         statsToggleBtn.addEventListener('click', () => {
             const collapsed = !dashboardEl.classList.contains('stats-collapsed');
             setStatsCollapsed(collapsed);
+            statsToggleBtn.blur();
         });
 
         const startCollapsed = (() => {
@@ -137,7 +154,6 @@
 
         // ── Live Viewer (QuakeJS Direct + Optional HLS) ─────────────────
         const video = document.getElementById('live-video');
-        const directSpectate = document.getElementById('direct-spectate');
         const offlineEl = document.getElementById('video-offline');
         let hlsInstance = null;
         let streamActive = false;
@@ -147,7 +163,8 @@
         const spectateHost = window.location.hostname || 'localhost';
         const spectateProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
         const spectatePort = window.location.protocol === 'https:' ? '' : ':8080';
-        const directSpectateUrl = `${spectateProtocol}//${spectateHost}${spectatePort}/`;
+        const playerName = (username || '').trim() || 'Player';
+        const directSpectateUrl = `${spectateProtocol}//${spectateHost}${spectatePort}/?name=${encodeURIComponent(playerName)}`;
 
         function setOfflineMessage(title, detail = '') {
             offlineEl.innerHTML = `

@@ -116,14 +116,14 @@ class BotProcessManager:
 
         logger.info(
             f"Launching bot {bot_name} (id={bot_id}) for match {match_id} "
-            f"on server {server_url}"
+            f"on server {server_url} with strategy={strategy_path}"
         )
 
         try:
             process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None,   # inherit parent stdout → visible in docker logs
+                stderr=None,   # inherit parent stderr → visible in docker logs
                 # Start in a new process group so we can kill the whole group
                 preexec_fn=os.setsid if hasattr(os, "setsid") else None,
             )
@@ -209,10 +209,9 @@ class BotProcessManager:
                     bot_proc.finished = True
                     bot_proc.return_code = rc
                     if rc != 0:
-                        stderr = bot_proc.process.stderr.read().decode(errors="replace") if bot_proc.process.stderr else ""
                         logger.warning(
                             f"Bot {bot_proc.bot_name} (match={match_id}) exited with code {rc}. "
-                            f"stderr: {stderr[:500]}"
+                            f"(check docker logs for stderr)"
                         )
                 else:
                     result["all_finished"] = False

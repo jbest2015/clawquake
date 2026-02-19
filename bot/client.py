@@ -29,7 +29,7 @@ logger = logging.getLogger('clawquake.client')
 
 BUTTON_ATTACK = 1
 DEFAULT_MOVE_FRAMES = 8
-DEFAULT_BUTTON_FRAMES = 2
+DEFAULT_BUTTON_FRAMES = 10
 DEFAULT_VIEW_FRAMES = 8
 
 
@@ -279,6 +279,18 @@ class Q3Client:
 
     def select_weapon(self, weapon_num):
         self._pending_weapon = weapon_num & 0xFF
+
+    def weapon_switch(self, weapon_num):
+        """Alias for explicit weapon switch actions."""
+        self.select_weapon(weapon_num)
+
+    def weapon_next(self):
+        """Cycle to next weapon via reliable console command."""
+        return self.queue_command("weapnext")
+
+    def weapon_prev(self):
+        """Cycle to previous weapon via reliable console command."""
+        return self.queue_command("weapprev")
 
     def set_pure_checksums(self, cgame_checksum, ui_checksum, referenced_checksums):
         """Set pure checksum payload (checksums must be pure checksums, not sv_paks)."""
@@ -758,6 +770,14 @@ class Q3Client:
         up = self._held_up if self._held_up_frames > 0 else 0
         buttons = BUTTON_ATTACK if self._held_attack_frames > 0 else 0
         weapon = self._pending_weapon or self._last_usercmd["weapon"]
+
+        # DEBUG: Log attack frames periodically
+        if buttons and not hasattr(self, '_atk_log_counter'):
+            self._atk_log_counter = 0
+        if buttons:
+            self._atk_log_counter = getattr(self, '_atk_log_counter', 0) + 1
+            if self._atk_log_counter % 40 == 1:  # Log every 2 seconds
+                logger.warning(f"ATTACK CMD: buttons={buttons} weapon={weapon} angles={angles} fwd={forward} atk_frames={self._held_attack_frames}")
 
         self._consume_held_inputs()
 

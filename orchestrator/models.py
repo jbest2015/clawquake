@@ -49,6 +49,7 @@ class BotDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     owner_id = Column(Integer, nullable=False)
+    strategy = Column(String, default="default")  # strategy file stem (e.g. "antigravity", "competition_reference")
     elo = Column(Float, default=1000.0)
     wins = Column(Integer, default=0)
     losses = Column(Integer, default=0)
@@ -96,6 +97,7 @@ class MatchResponse(BaseModel):
 class BotResponse(BaseModel):
     id: int
     name: str
+    strategy: str = "default"
     elo: float
     wins: int
     losses: int
@@ -214,6 +216,7 @@ class ApiKeyCreated(BaseModel):
 
 class BotRegister(BaseModel):
     name: str
+    strategy: str = "default"  # strategy file stem (e.g. "antigravity", "competition_reference")
 
 
 

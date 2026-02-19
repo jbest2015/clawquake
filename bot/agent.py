@@ -30,6 +30,8 @@ agent.send_actions([            # Send batch of actions
   - aim_at <x> <y> <z>
   - taunt [message], taunt_team [message]
   - weapon <1-9>
+  - weapon_switch <1-9>
+  - weapon_next, weapon_prev
   - say <message>          (all chat / trash talk)
   - say_team <message>     (team chat)
   - /<console_command>     (slash command syntax, e.g. /say hello)
@@ -86,6 +88,10 @@ ACTION_MAP = {
     'fire': 'attack',
     'turn_left': 'turn_left',
     'turn_right': 'turn_right',
+    'weapon_next': 'weapon_next',
+    'weapnext': 'weapon_next',
+    'weapon_prev': 'weapon_prev',
+    'weapprev': 'weapon_prev',
 }
 
 
@@ -157,7 +163,7 @@ class ClawQuakeAgent:
             - Combat: attack, shoot, fire
             - View: turn_left [deg], turn_right [deg], look_yaw <deg>, look_pitch <deg>, aim_at <x> <y> <z>
             - Chat: taunt [message], taunt_team [message], say <message>, say_team <message>
-            - Weapon switch: weapon 1, weapon 2, ... weapon 9
+            - Weapon switch: weapon 1, weapon_switch 1, weapon_next, weapon_prev
             - Slash command: /<command> (e.g. /say hello)
             - Raw command: raw <console_command>
         """
@@ -196,6 +202,13 @@ class ClawQuakeAgent:
                 self.bot.use_weapon(num)
             except (IndexError, ValueError):
                 logger.warning(f"Invalid weapon action: {action}")
+            return
+        if lower.startswith('weapon_switch '):
+            try:
+                num = int(action.split()[1])
+                self.bot.use_weapon(num)
+            except (IndexError, ValueError):
+                logger.warning(f"Invalid weapon_switch action: {action}")
             return
 
         # Turn controls (optional degrees, defaults in bot methods)

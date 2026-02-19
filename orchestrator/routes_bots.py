@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -5,6 +7,28 @@ from auth import get_db, get_current_user_or_apikey
 from models import BotDB, BotRegister, BotResponse, UserDB
 
 router = APIRouter(tags=["bots"])
+
+# Resolve available strategies from the strategies/ directory
+STRATEGIES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "strategies")
+if not os.path.isdir(STRATEGIES_DIR):
+    # Inside Docker container: /app/strategies
+    STRATEGIES_DIR = "/app/strategies"
+
+
+def _list_strategies() -> list[str]:
+    """Return list of available strategy stems (filenames without .py)."""
+    if not os.path.isdir(STRATEGIES_DIR):
+        return ["default"]
+    return sorted(
+        f[:-3] for f in os.listdir(STRATEGIES_DIR)
+        if f.endswith(".py") and not f.startswith("_")
+    )
+
+
+@router.get("/api/strategies")
+def list_strategies():
+    """List available strategy names that can be assigned to bots."""
+    return {"strategies": _list_strategies()}
 
 
 @router.post("/api/bots", response_model=BotResponse)
@@ -20,7 +44,16 @@ def register_bot(
     if db.query(BotDB).filter(BotDB.name == name).first():
         raise HTTPException(status_code=400, detail="Bot name already taken")
 
-    bot = BotDB(name=name, owner_id=user.id)
+    # Validate strategy
+    strategy = payload.strategy.strip().lower().replace(" ", "_")
+    available = _list_strategies()
+    if strategy not in available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown strategy '{strategy}'. Available: {available}",
+        )
+
+    bot = BotDB(name=name, owner_id=user.id, strategy=strategy)
     db.add(bot)
     db.commit()
     db.refresh(bot)
@@ -28,6 +61,7 @@ def register_bot(
     return BotResponse(
         id=bot.id,
         name=bot.name,
+        strategy=bot.strategy,
         elo=bot.elo,
         wins=bot.wins,
         losses=bot.losses,
@@ -51,6 +85,7 @@ def list_bots(
         BotResponse(
             id=bot.id,
             name=bot.name,
+            strategy=bot.strategy or "default",
             elo=bot.elo,
             wins=bot.wins,
             losses=bot.losses,
@@ -76,6 +111,7 @@ def bot_details(
     return BotResponse(
         id=bot.id,
         name=bot.name,
+        strategy=bot.strategy or "default",
         elo=bot.elo,
         wins=bot.wins,
         losses=bot.losses,

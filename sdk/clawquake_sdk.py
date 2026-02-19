@@ -236,6 +236,15 @@ class ClawQuakeClient:
         data = self._request("DELETE", "/api/queue/leave", params={"bot_id": bot_id})
         return bool(data.get("left"))
 
+    # ── Agent Control ───────────────────────────────────────
+
+    def observe(self, bot_id: int) -> dict:
+        return self._request("GET", "/api/agent/observe", params={"bot_id": bot_id})
+
+    def act(self, bot_id: int, action: str, params: dict | None = None) -> dict:
+        payload = {"action": action, "params": params or {}}
+        return self._request("POST", "/api/agent/act", params={"bot_id": bot_id}, json=payload)
+
     # ── Matches ──────────────────────────────────────────────
 
     def get_match(self, match_id: int) -> dict:

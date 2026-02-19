@@ -155,6 +155,36 @@ def test_leave_queue(monkeypatch):
     assert client.leave_queue(3) is True
 
 
+def test_observe(monkeypatch):
+    client = ClawQuakeClient("http://test.local", jwt_token="jwt")
+
+    def fake_request(method, path, headers=None, **kwargs):
+        assert method == "GET"
+        assert path == "/api/agent/observe"
+        assert kwargs["params"]["bot_id"] == 11
+        return make_response(method, path, {"tick": 99, "health": 100})
+
+    monkeypatch.setattr(client._http, "request", fake_request)
+    data = client.observe(11)
+    assert data["tick"] == 99
+
+
+def test_act(monkeypatch):
+    client = ClawQuakeClient("http://test.local", jwt_token="jwt")
+
+    def fake_request(method, path, headers=None, **kwargs):
+        assert method == "POST"
+        assert path == "/api/agent/act"
+        assert kwargs["params"]["bot_id"] == 4
+        assert kwargs["json"]["action"] == "weapon_next"
+        assert kwargs["json"]["params"] == {"hot": True}
+        return make_response(method, path, {"ok": True, "queued": True, "queue_length": 1})
+
+    monkeypatch.setattr(client._http, "request", fake_request)
+    data = client.act(4, "weapon_next", {"hot": True})
+    assert data["ok"] is True
+
+
 def test_get_match(monkeypatch):
     client = ClawQuakeClient("http://test.local", jwt_token="jwt")
 

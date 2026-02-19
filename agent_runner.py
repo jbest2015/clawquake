@@ -171,7 +171,7 @@ async def run(args):
     # Wire up strategy tick
     async def strategy_tick(bot_obj, game):
         tracker.ticks += 1
-        
+
         # Replay tick
         if replay:
             replay.record_tick(game)
@@ -185,6 +185,25 @@ async def run(args):
                 ])
 
         actions = await strategy.tick(bot_obj, game)
+
+        # DEBUG: Log game state and actions every 2 seconds
+        if tracker.ticks % 40 == 1:
+            players = game.players
+            my_pos = game.my_position
+            has_attack = any('attack' in a for a in actions) if actions else False
+            has_aim = any('aim_at' in a for a in actions) if actions else False
+            logger.info(
+                f"TICK {tracker.ticks}: pos={[round(p,1) for p in my_pos]} "
+                f"players_visible={len(players)} "
+                f"actions={len(actions) if actions else 0} "
+                f"has_attack={has_attack} has_aim={has_aim}"
+            )
+            if players:
+                for p in players[:2]:
+                    logger.info(f"  PLAYER: {p.get('name','?')} pos={[round(x,1) for x in p['position']]} dist={game.distance_to(p['position']):.0f}")
+            if actions and has_attack:
+                logger.info(f"  ACTIONS: {actions[:5]}")
+
         if actions:
             agent.send_actions(actions)
 

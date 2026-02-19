@@ -19,7 +19,34 @@ var proto = window.location.protocol;
 var host = window.location.hostname;
 var wsProto = (proto === 'https:') ? 'wss:' : 'ws:';
 var httpPort = (proto === 'https:') ? '443' : '8080';
-var args = ['+set', 'fs_cdn', host + ':' + httpPort, '+connect', host + ':' + httpPort];
+
+// Player name: allow passing ?name=... from the parent dashboard, and persist it
+// for direct loads (prevents showing up as "UnnamedPlayer").
+var qs = new URLSearchParams(window.location.search || '');
+var playerName = qs.get('name');
+try {
+  if (!playerName) playerName = localStorage.getItem('clawquake_player_name');
+} catch (e) {}
+playerName = (playerName || '').replace(/[\\\\\";]/g, '').trim().slice(0, 20);
+if (!playerName) playerName = 'ClawQuakePlayer';
+try { localStorage.setItem('clawquake_player_name', playerName); } catch (e) {}
+
+var args = [
+  // Use direct cvar command instead of +set to avoid startup-variable ordering quirks.
+  '+name', playerName,
+  // Default humans to spectator mode so viewing doesn't affect matches.
+  // Quake 3 encodes team in userinfo as key "t" (0=free, 1=red, 2=blue, 3=spectator).
+  // Setting it before connect is more reliable than trying to run "team spectator"
+  // after the client has already spawned.
+  '+set', 't', '3',
+  // Some builds use the string-based cvar instead; set both.
+  '+set', 'team', 'spectator',
+  // UI layer team selection cvars used by many Q3 frontends.
+  '+set', 'ui_team', '3',
+  '+set', 'ui_teamName', 'spectator',
+  '+set', 'fs_cdn', host + ':' + httpPort,
+  '+connect', host + ':' + httpPort
+];
 PATCH
 
 # Replace the args line in index.html with our protocol-aware version
@@ -38,16 +65,51 @@ new_code = '''var proto = window.location.protocol;
 				var host = window.location.hostname;
 				var wsProto = (proto === 'https:') ? 'wss:' : 'ws:';
 				var httpPort = (proto === 'https:') ? '443' : '8080';
-				var args = ['+set', 'fs_cdn', host + ':' + httpPort, '+connect', host + ':' + httpPort];'''
+				var qs = new URLSearchParams(window.location.search || '');
+				var playerName = qs.get('name');
+				try {
+					if (!playerName) playerName = localStorage.getItem('clawquake_player_name');
+				} catch (e) {}
+				playerName = (playerName || '').replace(/[\\\\\";]/g, '').trim().slice(0, 20);
+				if (!playerName) playerName = 'ClawQuakePlayer';
+				try { localStorage.setItem('clawquake_player_name', playerName); } catch (e) {}
+				var args = ['+name', playerName, '+set', 't', '3', '+set', 'team', 'spectator', '+set', 'ui_team', '3', '+set', 'ui_teamName', 'spectator', '+set', 'fs_cdn', host + ':' + httpPort, '+connect', host + ':' + httpPort];'''
 
 content = re.sub(old_pattern, new_code, content)
+
+# Disable getQueryCommands() injection: it mis-parses key=value params like ?name=John
+# into [+name, +John], which can break argument ordering relative to +connect.
+content = content.replace('args.push.apply(args, getQueryCommands());',
+                          '// args.push.apply(args, getQueryCommands()); // disabled in ClawQuake')
+
+# Force human browser clients into spectator mode after startup.
+# We do this post-boot using Cvar_Set so the engine has registered userinfo cvars.
+if 'function clawquakeForceSpectator' not in content:
+    content = content.replace(
+        'ioq3.callMain(args);',
+        '''ioq3.callMain(args);
+
+\t\t\t\tfunction clawquakeForceSpectator() {
+\t\t\t\t\ttry {
+\t\t\t\t\t\tif (!ioq3 || !ioq3.ccall) return;
+\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['t', '3']);
+\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['team', 'spectator']);
+\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['ui_team', '3']);
+\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['ui_teamName', 'spectator']);
+\t\t\t\t\t\tif (ioq3.runPostSets) ioq3.runPostSets();
+\t\t\t\t\t} catch (e) {}
+\t\t\t\t}
+\t\t\t\tsetTimeout(clawquakeForceSpectator, 1500);
+\t\t\t\tsetTimeout(clawquakeForceSpectator, 3000);
+\t\t\t\tsetTimeout(clawquakeForceSpectator, 6000);'''
+    )
 with open('index.html', 'w') as f:
     f.write(content)
 print('index.html patched successfully')
 " || {
     echo "Python patch failed, using sed fallback"
     # Fallback: just set the known good values
-    sed -i "s|var args = .*//custom args.*|var args = ['+set', 'fs_cdn', window.location.hostname + ':' + (window.location.protocol === 'https:' ? '443' : '8080'), '+connect', window.location.hostname + ':' + (window.location.protocol === 'https:' ? '443' : '8080')];|" index.html
+    sed -i "s|var args = .*//custom args.*|var args = ['+name', 'ClawQuakePlayer', '+set', 'fs_cdn', window.location.hostname + ':' + (window.location.protocol === 'https:' ? '443' : '8080'), '+connect', window.location.hostname + ':' + (window.location.protocol === 'https:' ? '443' : '8080')];|" index.html
 }
 
 # --- Patch ioquake3.js (browser client) ---
@@ -93,4 +155,6 @@ exec node build/ioq3ded.js \
   +set dedicated 1 \
   +set fs_cdn "localhost:8080" \
   +exec server.cfg \
+  +set sv_timeout 10 \
+  +set sv_zombietime 1 \
   +set sv_pure 0

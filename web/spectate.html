@@ -106,7 +106,8 @@
         const directHost = window.location.hostname || "localhost";
         const directProto = window.location.protocol === "https:" ? "https:" : "http:";
         const directPort = window.location.protocol === "https:" ? "" : ":8080";
-        const defaultPath = `${directProto}//${directHost}${directPort}/`;
+        const playerName = (localStorage.getItem('clawquake_user') || '').trim() || 'Player';
+        const defaultPath = `${directProto}//${directHost}${directPort}/?name=${encodeURIComponent(playerName)}`;
         const initialPath = query.get("path") || defaultPath;
         const initialMatch = query.get("match_id");
         if (initialMatch) {

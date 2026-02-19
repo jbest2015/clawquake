@@ -333,15 +333,23 @@ class MatchMaker:
         return urls.split(",")[0].strip()
 
     def _get_bot_strategy(self, db: Session, bot_id: int) -> str:
-        """Get the strategy path for a bot. Falls back to default."""
+        """Get the strategy path for a bot from the DB. Falls back to default."""
+        default = os.environ.get("DEFAULT_STRATEGY", "strategies/default.py")
         bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
-        if bot:
-            # Future: bots may have a strategy_path column
-            # For now, use a convention: strategies/<bot_name>.py or default
-            strategy_path = f"strategies/{bot.name.lower().replace(' ', '_')}.py"
-            if os.path.exists(strategy_path):
-                return strategy_path
-        return os.environ.get("DEFAULT_STRATEGY", "strategies/default.py")
+        if not bot:
+            return default
+
+        strategy_name = getattr(bot, "strategy", None) or "default"
+        strategy_path = f"strategies/{strategy_name}.py"
+        if os.path.exists(strategy_path):
+            logger.info(f"Bot {bot.name} (id={bot_id}): using strategy '{strategy_name}' -> {strategy_path}")
+            return strategy_path
+
+        logger.warning(
+            f"Bot {bot.name} (id={bot_id}): strategy '{strategy_name}' not found at {strategy_path}, "
+            f"falling back to default"
+        )
+        return default
 
     def _owner_has_active_key(self, db: Session, owner_id: int) -> bool:
         """

@@ -322,7 +322,15 @@ class ClawBot:
 
     def use_weapon(self, weapon_num):
         """Switch to a weapon by number (1-9)."""
-        self.client.select_weapon(weapon_num)
+        self.client.weapon_switch(weapon_num)
+
+    def weapon_next(self):
+        """Cycle to next weapon."""
+        self.client.weapon_next()
+
+    def weapon_prev(self):
+        """Cycle to previous weapon."""
+        self.client.weapon_prev()
 
     def say(self, message):
         """Send chat message to all players (trash talk!)."""
