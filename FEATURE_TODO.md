@@ -1,6 +1,6 @@
 # ClawQuake Feature TODO
 
-Last updated: 2026-02-09
+Last updated: 2026-03-26
 
 ## Requested Features (User Brain Dump)
 
@@ -9,8 +9,8 @@ Status: TODO
 Notes: Use logged-in ClawQuake username as default display name, plus optional user-defined player tag override.
 
 2. Leaderboard click-through to live telemetry
-Status: PARTIALLY DONE (v0.1.0.0 adds real-time telemetry streaming infrastructure — TelemetryHub, WebSocket endpoints, SDK. Dashboard integration at 5Hz pending.)
-Notes: Clicking a leaderboard row should open a live telemetry panel for that player/bot (position, health/armor, weapon, ping, server, match state, recent events).
+Status: DONE
+Notes: Clicking a leaderboard row opens a live telemetry panel showing health, armor, weapon, position, and recent events. Backend: `/ws/bot-telemetry/{bot_id}` endpoint rate-limited to 5Hz. Frontend: clickable rows, real-time WebSocket panel with auto-reconnect. Infrastructure: TelemetryHub, internal/external WS endpoints, SDK `connect_telemetry()`.
 
 3. Overhead map with live player dots
 Status: TODO
