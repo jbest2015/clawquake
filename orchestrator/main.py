@@ -39,6 +39,8 @@ from models import (
     TournamentCreate, TournamentJoin, TournamentResponse
 )
 from ai_agent_interface import router as ai_agent_router
+import ai_agent_interface
+from telemetry_hub import TelemetryHub
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawquake")
@@ -79,6 +81,8 @@ matchmaker = MatchMaker(
     rcon_pool=rcon_pool,
 )
 websocket_hub = WebSocketHub()
+telemetry_hub = TelemetryHub()
+ai_agent_interface.telemetry_hub = telemetry_hub
 event_queue: SimpleQueue[tuple[str, dict]] = SimpleQueue()
 websocket_publisher_task: asyncio.Task | None = None
 
