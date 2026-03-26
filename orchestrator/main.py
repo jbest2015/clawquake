@@ -246,6 +246,68 @@ async def websocket_events(ws: WebSocket):
         await websocket_hub.disconnect(ws)
 
 
+DASHBOARD_TELEMETRY_HZ = 5
+DASHBOARD_TELEMETRY_INTERVAL = 1.0 / DASHBOARD_TELEMETRY_HZ  # 200ms
+
+
+@app.websocket("/ws/bot-telemetry/{bot_id}")
+async def websocket_bot_telemetry(ws: WebSocket, bot_id: int):
+    """Rate-limited (5Hz) telemetry stream for dashboard spectators.
+
+    Subscribes to TelemetryHub for the given bot_id and forwards frames
+    at most 5 times per second. Intermediate frames are dropped — only
+    the latest is sent each interval.
+    """
+    await ws.accept()
+
+    # Send initial state snapshot if available
+    from ai_agent_interface import LATEST_STATES
+    initial = LATEST_STATES.get(bot_id)
+    if initial:
+        await ws.send_json({"type": "state_snapshot", "bot_id": bot_id, "state": initial})
+
+    queue = await telemetry_hub.subscribe(bot_id)
+
+    async def _rate_limited_send():
+        """Drain hub queue at 5Hz, forwarding only the latest frame."""
+        try:
+            while True:
+                await asyncio.sleep(DASHBOARD_TELEMETRY_INTERVAL)
+                # Drain queue — keep only the latest frame
+                latest = None
+                while not queue.empty():
+                    try:
+                        latest = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                if latest is not None:
+                    dropped = telemetry_hub.get_dropped_frames(queue)
+                    if dropped:
+                        latest["dropped_frames"] = dropped
+                    await ws.send_json(latest)
+        except (WebSocketDisconnect, Exception):
+            pass
+
+    async def _receive_keepalive():
+        """Accept pings from the dashboard client."""
+        try:
+            while True:
+                msg = await ws.receive_text()
+                if msg.lower() == "ping":
+                    await ws.send_json({"type": "pong"})
+        except (WebSocketDisconnect, Exception):
+            pass
+
+    try:
+        await asyncio.gather(
+            _rate_limited_send(),
+            _receive_keepalive(),
+            return_exceptions=True,
+        )
+    finally:
+        await telemetry_hub.unsubscribe(bot_id, queue)
+
+
 # ── Auth Endpoints ──────────────────────────────────────────────
 
 @app.post("/api/auth/register", response_model=TokenResponse)
