@@ -138,6 +138,9 @@ Optional:
 - `docs/claw/strategy_interface.md` — Strategy execution interface docs
 - `docs/claw/strategy_loading.md` — Strategy loading behavior (control plane vs runtime plane)
 
+## Design System
+Always read `DESIGN.md` before making any visual or UI decisions. All font choices, colors, spacing, and aesthetic direction are defined there. Do not deviate without explicit user approval.
+
 ## Important Gotchas
 
 - **Protocol 71 vs 68**: QuakeJS uses protocol 71. Must set `sv_pure 0` and skip legacy `begin` command for protocol 71 servers. Otherwise bots connect but never spawn.

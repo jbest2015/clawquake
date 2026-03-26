@@ -1,18 +1,60 @@
-/* ClawQuake — Dark Gaming Theme */
+/* ClawQuake — Retro-Futuristic Design System
+   See DESIGN.md for full specification */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #12121a;
-    --bg-card: #1a1a2e;
-    --bg-input: #16213e;
-    --accent: #e94560;
-    --accent-hover: #ff6b81;
-    --text-primary: #eee;
-    --text-secondary: #888;
-    --text-muted: #555;
-    --border: #2a2a3e;
-    --success: #00c851;
-    --warning: #ffbb33;
+    /* Backgrounds — warm near-blacks */
+    --bg-primary: #0C0C0F;
+    --bg-secondary: #141418;
+    --bg-card: #141418;
+    --bg-tertiary: #1C1C22;
+    --bg-input: #1C1C22;
+
+    /* Accent — Quake 3 HUD energy */
+    --accent: #FF6A00;
+    --accent-hover: #FF8533;
+    --accent-glow: rgba(255, 106, 0, 0.15);
+
+    /* Secondary — terminal green */
+    --secondary: #00FF88;
+    --secondary-glow: rgba(0, 255, 136, 0.15);
+
+    /* Text — warm off-white */
+    --text-primary: #E8E4DE;
+    --text-secondary: #7A7670;
+    --text-muted: #4A4640;
+
+    /* Border */
+    --border: #2A2824;
+
+    /* Semantic */
+    --success: #00FF88;
+    --warning: #FFB800;
+    --error: #FF3B30;
+    --info: #4A9EFF;
+
+    /* Typography */
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-body: 'Instrument Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Spacing (4px base) */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Border radius — sharp, not bubbly */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+
+    /* Motion */
+    --duration-short: 150ms;
+    --duration-medium: 250ms;
 }
 
 * {
@@ -22,7 +64,7 @@
 }
 
 body {
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-body);
     background: var(--bg-primary);
     color: var(--text-primary);
     min-height: 100vh;
@@ -40,6 +82,7 @@ body {
 }
 
 .header h1 {
+    font-family: var(--font-display);
     font-size: 1.4rem;
     font-weight: 700;
     color: var(--accent);
@@ -306,8 +349,9 @@ body {
 }
 
 .status-live {
-    background: rgba(233, 69, 96, 0.2);
+    background: var(--accent-glow);
     color: var(--accent);
+    font-family: var(--font-mono);
 }
 
 .status-offline {
@@ -365,7 +409,7 @@ body {
 }
 
 .score-row:hover {
-    background: rgba(233, 69, 96, 0.05);
+    background: var(--accent-glow);
 }
 
 .score-row .rank {
