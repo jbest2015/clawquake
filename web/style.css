@@ -504,6 +504,88 @@ body {
     font-size: 0.8rem;
 }
 
+/* ── Clickable Leaderboard Rows ────────────────────── */
+
+.score-row-clickable {
+    cursor: pointer;
+}
+
+.score-row-clickable:hover {
+    background: var(--accent-glow);
+}
+
+.score-row-selected {
+    background: var(--accent-glow);
+    border-left: 2px solid var(--accent);
+}
+
+/* ── Telemetry Panel ───────────────────────────────── */
+
+.telemetry-body {
+    padding: var(--space-sm) var(--space-md);
+}
+
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.telemetry-stat {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-sm);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.telemetry-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.telemetry-value {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.telemetry-value.telem-danger {
+    color: var(--error);
+}
+
+.telemetry-mono {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+
+.telemetry-events {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-sm);
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.telem-event-row {
+    padding: 3px 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(42, 40, 36, 0.4);
+    font-family: var(--font-mono);
+}
+
+.telem-event-row:last-child {
+    border-bottom: none;
+}
+
 /* ── Empty States ───────────────────────────────────── */
 
 .empty-state {
