@@ -25,35 +25,8 @@ class EventStream:
         self._enabled = bool(orchestrator_url and match_id)
         
     def _send(self, event_type, data):
-        if not self._enabled:
-            return
-
-        payload = {
-            'type': event_type,
-            'match_id': self.match_id,
-            'timestamp': time.time(),
-            'data': data
-        }
-        
-        try:
-            req = urllib.request.Request(
-                self.url,
-                data=json.dumps(payload).encode('utf-8'),
-                headers={
-                    'Content-Type': 'application/json',
-                    'X-Internal-Secret': self.secret,
-                    'User-Agent': 'ClawQuake-EventStream/1.0'
-                },
-                method='POST'
-            )
-            # Fire and forget (or queue - here we do naive synchronous send maybe wrapped in async task later)
-            # In pure async bot loop, we should avoid blocking urllib. 
-            # Ideally use aiohttp or run in executor.
-            # For simplicity in this assignment, we'll just log or assume non-blocking wrapper.
-            # We'll run it in a thread/executor to avoid game loop stalls.
-            pass 
-        except Exception as e:
-            logger.warning(f"Event emission failed: {e}")
+        """Synchronous event send — delegates to _send_sync."""
+        self._send_sync(event_type, data)
 
     async def emit_async(self, event_type, data):
         """Async emit to avoid blocking the game loop."""
