@@ -9,7 +9,7 @@ Status: TODO
 Notes: Use logged-in ClawQuake username as default display name, plus optional user-defined player tag override.
 
 2. Leaderboard click-through to live telemetry
-Status: TODO
+Status: PARTIALLY DONE (v0.1.0.0 adds real-time telemetry streaming infrastructure — TelemetryHub, WebSocket endpoints, SDK. Dashboard integration at 5Hz pending.)
 Notes: Clicking a leaderboard row should open a live telemetry panel for that player/bot (position, health/armor, weapon, ping, server, match state, recent events).
 
 3. Overhead map with live player dots
