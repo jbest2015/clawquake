@@ -53,10 +53,19 @@ Four Docker services compose the platform:
 ```
 
 ### Orchestrator (`orchestrator/`)
-FastAPI backend. Entry point is `main.py`. Handles auth (JWT + API keys), bot registration, matchmaking queue, ELO calculation, RCON server pool, WebSocket event broadcasting, and bot subprocess management. SQLAlchemy models in `models.py`.
+FastAPI backend. Entry point is `main.py`. Handles auth (JWT + API keys), bot registration, matchmaking queue, ELO calculation, RCON server pool, WebSocket event broadcasting, and bot subprocess management. SQLAlchemy models in `models.py`. Additional modules: `ai_agent_interface.py` (AI agent integration), `websocket_hub.py` (WebSocket connection management).
 
 ### Bot Runtime (`bot/` + `agent_runner.py`)
 `agent_runner.py` is the CLI entry point spawned by the orchestrator's `process_manager.py` as a subprocess for each bot in a match. It loads a strategy `.py` file, connects to the QuakeJS server via WebSocket using the Q3 protocol client (`bot/client.py`), and runs a tick loop calling `strategy.tick()` each frame. Supports hot-reload of strategy files.
+
+Key modules:
+- `bot/snapshot.py` — Delta decompression and Q3 snapshot parsing (state machine)
+- `bot/buffers.py` — Huffman buffer wrapper around `q3huff2` C extension
+- `bot/game_intelligence.py` — Game state parsing and event detection
+- `bot/agent.py` — High-level agent interface for AI strategy integration
+- `bot/kill_tracker.py` — Kill/death tracking
+- `bot/event_stream.py` — Event broadcasting (`_send()` is no-op; use `_send_sync()`)
+- `bot/replay_recorder.py` — Match replay recording
 
 ### Strategies (`strategies/`)
 Python files implementing bot behavior. Each defines `STRATEGY_NAME`, `STRATEGY_VERSION`, `on_spawn(ctx)`, and `async tick(bot, game, ctx)`. Strategy resolution in `orchestrator/matchmaker.py::_get_bot_strategy()` tries `strategies/<normalized_bot_name>.py`, falling back to `strategies/default.py`.
@@ -64,8 +73,26 @@ Python files implementing bot behavior. Each defines `STRATEGY_NAME`, `STRATEGY_
 ### Agent Strategies (`agents/`)
 Named agent directories (e.g., `agents/claude/`, `agents/antigravity/`) with versioned `strategy.py` files for specific AI agents competing in the arena.
 
+### Spectator Service (`spectator/`)
+HLS streaming container (Xvfb + FFmpeg → nginx). Captures live match video for browser-based spectating.
+
+### SDK (`sdk/`)
+Python client library (`clawquake_sdk.py`) wrapping all API endpoints for programmatic access.
+
+### Tournament (`tournament/`)
+`bracket.py` — Tournament bracket logic for single and double elimination.
+
+### Scripts (`scripts/`)
+`play_match.py` — Match execution helper script.
+
 ### Web UI (`web/`)
-Vanilla HTML/CSS/JS frontend. Dashboard with live stats, spectator view (QuakeJS iframe), tournament brackets, replay viewer, API docs page.
+Vanilla HTML/CSS/JS frontend. Dashboard with live stats, spectator view (QuakeJS iframe), tournament brackets, replay viewer, API docs page. Pages: `index.html`, `manage.html`, `tournament.html`, `getting-started.html`, `docs.html`, `replays.html`, `spectate.html`.
+
+### Multi-Agent Coordination (`communication/`)
+Append-only dialogue log (`communication/dialogue`) for cross-agent coordination. Agents (Claude, Codex, Anti-Gravity) post timestamped ISO 8601 UTC messages to share strategy milestones, bug discoveries, and state synchronization.
+
+### Session Continuity (`memory-bank/`)
+11 markdown files for maintaining state across development sessions: `activeContext.md`, `progress.md`, `techContext.md`, `continuity.md`, `tasks.md`, `runlog.md`, etc.
 
 ## Key Data Flow: Match Lifecycle
 
@@ -98,6 +125,19 @@ Optional:
 - `mock_rcon` fixture provides a mock RCON pool
 - Helper functions: `create_test_user()`, `create_test_bot()`, `queue_bot()` in `conftest.py`
 
+## Additional Documentation
+
+- `CLAUDE_REFERENCE.md` — Infrastructure reference tracking project state across sessions, bugs fixed, production server details
+- `ARCHITECTURE.md` — Component architecture with file-to-responsibility mappings
+- `BOT_DEVELOPMENT.md` — Bot development status and protocol integration guide
+- `DEPLOYMENT.md` — Full deployment guide including Docker, API endpoints, monitoring
+- `SERVER_CONFIG.md` — Server configuration log (RCON setup, sv_pure, management commands)
+- `PLATFORM_PLAN.md` — Work packages and implementation plan
+- `FEATURE_TODO.md` — Feature backlog (leaderboard telemetry, minimap, spectator modes, etc.)
+- `docs/claw/protocol.md` — Quake 3 protocol 71 technical reference (Huffman, packet formats, snapshot parsing)
+- `docs/claw/strategy_interface.md` — Strategy execution interface docs
+- `docs/claw/strategy_loading.md` — Strategy loading behavior (control plane vs runtime plane)
+
 ## Important Gotchas
 
 - **Protocol 71 vs 68**: QuakeJS uses protocol 71. Must set `sv_pure 0` and skip legacy `begin` command for protocol 71 servers. Otherwise bots connect but never spawn.
@@ -107,3 +147,6 @@ Optional:
 - **API key required for matches**: `_owner_has_active_key()` check means bots won't launch without an active, non-expired API key.
 - **Game servers only work on x86_64**: OpenArena QVM is incompatible with ARM64.
 - **Production uses `docker-compose` (hyphenated)**: Older Docker version on prod server.
+- **EventStream `_send()` is a no-op**: Use `_send_sync()` in `bot/event_stream.py` instead.
+- **Strategy loading convention**: `strategies/<normalized_bot_name>.py` with fallback to `strategies/default.py`. No per-bot `strategy_path` field in API yet.
+- **Huffman compression**: Connect packets use `q3huff2` C extension for Huffman coding. Fragment reassembly uses unsigned sequence numbers.
