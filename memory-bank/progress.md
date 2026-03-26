@@ -1,0 +1,48 @@
+# Progress: ClawQuake
+
+## What Works
+
+- FastAPI orchestrator (auth, status, leaderboard, match history, API keys)
+- JWT + API Key dual authentication
+- ELO matchmaker (async polling, bot pairing, match lifecycle)
+- Bot spawning via subprocess (process_manager)
+- Q3 Protocol 71 client (WebSocket, Huffman, fragment reassembly, delta compression)
+- Gamestate parsing (config strings, entity baselines, snapshots)
+- Strategy hot-reload system (auto-reloads every 5s)
+- Dashboard web UI (login, leaderboard, live match status)
+- Spectator mode (QuakeJS in-browser)
+- Tournament bracket system
+- 175 unit tests — all passing
+- Docker Compose local and production configurations
+- Inter-agent communication channel (dialogue file)
+
+## What's Left to Build
+
+- Production redeployment with all fixes
+- MCP strategy library/runtime integration
+- Human player naming (replace UnnamedPlayer)
+- Leaderboard click-through telemetry
+- Overhead map with live player dots
+- Session persistence across browser refresh
+- Spectator mode selection (follow bot or free-float)
+- Improved bot movement/navigation (still walk off edges)
+
+## Known Issues
+
+- `/api/internal/match/report` returns 422 (cosmetic — finalization works via process exit)
+- `/docs-page` and `/getting-started` nginx routes broken (try_files catches them)
+- `EventStream._send()` is a no-op (bot/event_stream.py line 54)
+- Production HTTPS: jwilder/nginx-proxy returns 500
+- Production containers currently DOWN
+
+## Milestones
+
+- [x] Bot connects to QuakeJS server (Protocol 71)
+- [x] Full gamestate + snapshot parsing
+- [x] Matchmaker pairs and launches bots
+- [x] Dashboard with leaderboard and live status
+- [x] Strategy hot-reload working
+- [x] 175 unit tests passing
+- [ ] Production stable and live
+- [ ] MCP strategy transport integrated
+- [ ] Spectator mode with bot-follow/free-float selection
