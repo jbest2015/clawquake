@@ -99,21 +99,11 @@ async def tick(bot, game, ctx):
         actions.append(f"weapon {w}")
         
         # 4.2 Aiming with Lead Prediction
-        try:
-            # We need to pass weapon ID to get correct projectile speed
-            aim_pos = bot.combat_analyzer.get_lead_position(target, w)
-            if not aim_pos: 
-                aim_pos = t_pos
-            
-            # Simple Z offset for body center
-            aim_x = aim_pos[0]
-            aim_y = aim_pos[1]
-            aim_z = aim_pos[2] + 15
-            
-            actions.append(f"aim_at {aim_x} {aim_y} {aim_z}")
-        except Exception:
-             # Fallback if combat_analyzer fails or doesn't exist
-             actions.append(f"aim_at {t_pos[0]} {t_pos[1]} {t_pos[2] + 15}")
+        aim_pos = _get_lead_position(my_pos, target, w, ctx, game.server_time)
+        aim_x = aim_pos[0]
+        aim_y = aim_pos[1]
+        aim_z = aim_pos[2] + 15
+        actions.append(f"aim_at {aim_x} {aim_y} {aim_z}")
         
         # 4.3 Attack
         actions.append("attack")
@@ -193,3 +183,56 @@ def _is_useful(item, my_health):
     if t == 'health' and my_health >= 100: return False
     if t == 'armor' and my_health >= 200: return False # simplistic
     return True
+
+def _get_lead_position(my_pos, target, weapon_id, ctx, current_time):
+    # Track velocity by taking deltas of positions across ticks
+    client_num = target.get('client_num', target.get('entity_number', -1))
+    t_pos = target['position']
+    
+    if not hasattr(ctx, 'target_history'):
+        ctx.target_history = {}
+        
+    history = ctx.target_history.get(client_num)
+    velocity = [0.0, 0.0, 0.0]
+    
+    if history:
+        old_pos = history['pos']
+        dt = (current_time - history['time']) / 1000.0
+        if dt > 0 and dt < 1.0: # Ignore stale history
+            velocity = [
+                (t_pos[0] - old_pos[0]) / dt,
+                (t_pos[1] - old_pos[1]) / dt,
+                (t_pos[2] - old_pos[2]) / dt
+            ]
+            
+    # Update history for next tick
+    ctx.target_history[client_num] = {'pos': t_pos, 'time': current_time}
+    
+    # Projectile speeds based on Q3 constants (units/sec)
+    speeds = {
+        WP_ROCKET_LAUNCHER: 900.0,
+        WP_PLASMAGUN: 2000.0,
+        WP_GRENADE_LAUNCHER: 700.0,
+        WP_BFG: 2000.0
+    }
+    
+    speed = speeds.get(weapon_id)
+    if not speed:
+        return t_pos # Hitscan weapon, no lead time needed
+        
+    dx = t_pos[0] - my_pos[0]
+    dy = t_pos[1] - my_pos[1]
+    dz = t_pos[2] - my_pos[2]
+    dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+    time_to_impact = dist / speed
+    
+    # Predict future position
+    lead_x = t_pos[0] + velocity[0] * time_to_impact
+    lead_y = t_pos[1] + velocity[1] * time_to_impact
+    lead_z = t_pos[2] + velocity[2] * time_to_impact
+    
+    # Simple gravity compensation for grenade launcher arc
+    if weapon_id == WP_GRENADE_LAUNCHER:
+        lead_z += 0.5 * 800.0 * (time_to_impact * time_to_impact)
+        
+    return [lead_x, lead_y, lead_z]
