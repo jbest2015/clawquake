@@ -232,6 +232,47 @@ async def run(args):
         while time.time() < end_time:
             await asyncio.sleep(1)
 
+            # Sync Agent Control telemetry (1Hz)
+            if args.orchestrator_url and args.bot_id and args.internal_secret:
+                try:
+                    s = agent.bot.game.to_dict()
+                    # Reformat to match ai_agent_interface AgentState schema
+                    state_payload = {
+                        "tick": tracker.ticks,
+                        "position": s.get("my_position"),
+                        "health": s.get("my_health"),
+                        "armor": s.get("my_armor", 0),
+                        "weapon": s.get("my_weapon"),
+                        "visible_enemies": s.get("players", []),
+                    }
+                    state_payload.update(s) # Append the rest of the raw Q3 data
+                    
+                    payload = {"bot_id": args.bot_id, "state": state_payload}
+                    
+                    def do_sync():
+                        import urllib.request
+                        req = urllib.request.Request(
+                            f"{args.orchestrator_url}/api/agent/internal/sync",
+                            data=json.dumps(payload).encode('utf-8'),
+                            headers={'Content-Type': 'application/json', 'X-Internal-Secret': args.internal_secret},
+                            method='POST'
+                        )
+                        with urllib.request.urlopen(req, timeout=1.0) as f:
+                            return json.loads(f.read().decode('utf-8'))
+
+                    resp = await asyncio.get_running_loop().run_in_executor(None, do_sync)
+                    
+                    # Apply incoming macro actions from external AI
+                    for act_def in resp.get("actions", []):
+                        act_name = act_def.get("action")
+                        params = act_def.get("params", {})
+                        if act_name in ("say", "say_team"):
+                            agent.bot.execute(f'{act_name} "{params.get("message", "")}"')
+                        elif act_name:
+                            agent.bot.execute(act_name)
+                except Exception as e:
+                    logger.debug(f"Telemetry sync loop error: {e}")
+
             # Print periodic status every 30s
             elapsed = int(time.time() - tracker.start_time)
             if elapsed > 0 and elapsed % 30 == 0:

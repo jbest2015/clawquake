@@ -46,12 +46,9 @@ class EventStream:
                 },
                 method='POST'
             )
-            # Fire and forget (or queue - here we do naive synchronous send maybe wrapped in async task later)
-            # In pure async bot loop, we should avoid blocking urllib. 
-            # Ideally use aiohttp or run in executor.
-            # For simplicity in this assignment, we'll just log or assume non-blocking wrapper.
-            # We'll run it in a thread/executor to avoid game loop stalls.
-            pass 
+            # Run blocking IO synchronously. The caller should use run_in_executor.
+            with urllib.request.urlopen(req, timeout=1.0) as f:
+                pass 
         except Exception as e:
             logger.warning(f"Event emission failed: {e}")
 
