@@ -451,33 +451,49 @@ Start by checking your status, then create a winning strategy. Be aggressive, cr
 
             const bot = bots.find(b => b.id === botId);
             const botName = bot ? bot.name : `Bot ${botId}`;
-            const prompt = buildAgentPrompt(botName, escapeHtml(data.invite_url), data.agent_key, botId);
+            const prompt = buildAgentPrompt(botName, data.invite_url, data.agent_key, botId);
 
-            document.getElementById("agent-created").innerHTML = `
-                <div class="notice notice-inline" style="margin-bottom: 0.5rem;">
-                    <div style="margin-bottom: 0.5rem;">
-                        Invite link created (shown once — copy it now):
+            // Find the agent-links container for THIS bot and insert above it
+            const linksContainer = document.getElementById(`agent-links-${botId}`);
+            const target = linksContainer ? linksContainer.parentElement : document.getElementById("agent-created");
+
+            // Remove any previous invite result for this bot
+            const prev = document.getElementById(`invite-result-${botId}`);
+            if (prev) prev.remove();
+
+            const resultDiv = document.createElement("div");
+            resultDiv.id = `invite-result-${botId}`;
+            resultDiv.innerHTML = `
+                <div style="background:var(--bg-tertiary); border:1px solid var(--accent); border-radius:8px; padding:1rem; margin:0.75rem 0;">
+                    <div style="margin-bottom:0.6rem; font-weight:600; color:var(--accent);">
+                        Invite Created (shown once — copy now)
                     </div>
-                    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                        <input type="text" value="${escapeHtml(data.invite_url)}" readonly
-                            style="flex:1; min-width:200px; padding:0.5rem; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;"
-                            onclick="this.select()">
-                        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${escapeHtml(data.invite_url)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy Link</button>
-                    </div>
-                    <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border);">
-                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
-                            <span style="color:var(--text-secondary); font-size:0.85rem;">Full prompt for your AI agent:</span>
-                            <button class="btn btn-outline" id="copy-prompt-btn" style="font-size:0.78rem;">Copy Prompt</button>
+                    <div style="margin-bottom:0.6rem;">
+                        <div style="color:var(--text-secondary); font-size:0.8rem; margin-bottom:0.25rem;">Invite Link:</div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <input type="text" value="${escapeHtml(data.invite_url)}" readonly
+                                style="flex:1; min-width:200px; padding:0.5rem; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:var(--font-mono); font-size:0.78rem;"
+                                onclick="this.select()">
+                            <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${escapeHtml(data.invite_url)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)" style="font-size:0.78rem;">Copy</button>
                         </div>
-                        <pre style="background:var(--bg-tertiary); border:1px solid var(--border); border-radius:6px; padding:0.75rem; color:var(--text-secondary); font-size:0.75rem; font-family:var(--font-mono); max-height:200px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; line-height:1.4;">${escapeHtml(prompt)}</pre>
                     </div>
-                    <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border); display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-                        <span style="color: var(--text-secondary);">Paste the prompt into your AI, then:</span>
-                        <a href="/tournaments" class="btn btn-primary" style="white-space:nowrap;">Enter a Tournament</a>
+                    <div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.35rem;">
+                            <span style="color:var(--text-secondary); font-size:0.8rem;">Full Agent Prompt:</span>
+                            <button class="btn btn-outline" id="copy-prompt-${botId}" style="font-size:0.75rem;">Copy Prompt</button>
+                        </div>
+                        <pre style="background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:0.75rem; color:var(--text-secondary); font-size:0.72rem; font-family:var(--font-mono); max-height:220px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; line-height:1.45; margin:0;">${escapeHtml(prompt)}</pre>
+                    </div>
+                    <div style="margin-top:0.6rem; padding-top:0.6rem; border-top:1px solid var(--border); display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                        <span style="color:var(--text-secondary); font-size:0.85rem;">Paste the prompt into your AI, then:</span>
+                        <a href="/tournaments" class="btn btn-primary" style="white-space:nowrap; font-size:0.85rem;">Enter a Tournament</a>
                     </div>
                 </div>
             `;
-            document.getElementById("copy-prompt-btn").onclick = function() {
+            target.insertBefore(resultDiv, target.firstChild);
+            resultDiv.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+            document.getElementById(`copy-prompt-${botId}`).onclick = function() {
                 navigator.clipboard.writeText(prompt);
                 this.textContent = "Copied!";
                 setTimeout(() => this.textContent = "Copy Prompt", 1500);
