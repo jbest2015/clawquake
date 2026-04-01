@@ -621,6 +621,21 @@
                 <div class="bracket" id="bracket-container"></div>
             </div>
 
+            <!-- Live Arena (active tournaments only) -->
+            <div id="arena-section" style="display:none;">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.75rem;">
+                    <h3 style="margin:0;"><span class="live-dot-header"></span> Live Arena</h3>
+                    <a href="/play/" target="_blank" class="btn btn-primary"
+                       style="background:var(--accent);color:#fff;border:none;padding:0.6rem 1.4rem;font-weight:600;border-radius:6px;text-decoration:none;">
+                        Join the Fight
+                    </a>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+                    <canvas id="arena-radar" style="display:block;width:100%;height:350px;"></canvas>
+                    <div id="arena-legend" style="display:flex;flex-wrap:wrap;gap:0.75rem;padding:0.6rem 0.9rem;border-top:1px solid var(--border);font-size:0.82rem;color:var(--text-secondary);"></div>
+                </div>
+            </div>
+
             <!-- Live Feed -->
             <div class="live-feed" id="live-feed-section" style="display:none;">
                 <h3><span class="live-dot-header"></span> Live Feed</h3>
@@ -785,7 +800,10 @@
             document.getElementById("t-meta").innerHTML = metaHtml;
 
             // Right side actions
-            const isOwner = currentUser && (currentUser.is_admin || currentUser.id === info.created_by_user_id);
+            const storedUsername = localStorage.getItem("clawquake_user") || "";
+            const isOwner = currentUser
+                ? (currentUser.is_admin || currentUser.id === info.created_by_user_id)
+                : (storedUsername && storedUsername === info.creator_name);
             let actionsHtml = "";
 
             if (info.status === "pending" && isOwner) {
@@ -860,6 +878,7 @@
             let headerCells = "";
             if (isStarted) headerCells += "<th>Seed</th>";
             headerCells += "<th>Bot</th><th>Owner</th><th>ELO</th><th>Strategy</th>";
+            if (!isStarted) headerCells += "<th>Ready</th>";
             if (isStarted) headerCells += "<th>Status</th>";
 
             let rows = participants.map((p, i) => {
@@ -869,6 +888,11 @@
                 cells += `<td>${escapeHtml(p.owner_name || p.username || "")}</td>`;
                 cells += `<td class="table-elo">${Math.round(p.elo || 1200)}</td>`;
                 cells += `<td class="table-strategy">${escapeHtml(p.strategy || "default")}</td>`;
+                if (!isStarted) {
+                    const readyCls = p.ready ? "active-player" : "eliminated";
+                    const readyText = p.ready ? "Ready" : "Not Ready";
+                    cells += `<td><span class="table-status ${readyCls}">${readyText}</span></td>`;
+                }
                 if (isStarted) {
                     const statusCls = p.eliminated ? "eliminated" : "active-player";
                     const statusText = p.eliminated ? "Eliminated" : "Active";
@@ -980,14 +1004,139 @@
 
         function renderLiveFeed(info) {
             const section = document.getElementById("live-feed-section");
+            const arenaSection = document.getElementById("arena-section");
+
             if (info.status !== "active") {
                 section.style.display = "none";
+                arenaSection.style.display = "none";
                 disconnectWs();
+                stopRadar();
                 return;
             }
 
             section.style.display = "block";
+            arenaSection.style.display = "block";
             connectWs();
+            startRadar();
+        }
+
+        /* ── Arena Radar ──────────────────────────────────── */
+
+        let radarInterval = null;
+        const RADAR_COLORS = [
+            "#FF6A00", "#00FF88", "#4A9EFF", "#FF3B30",
+            "#FFB800", "#BD5FFF", "#00D4FF", "#FF6B9D",
+        ];
+        const radarColorMap = {};
+        let radarColorIdx = 0;
+
+        function getRadarColor(name) {
+            if (!radarColorMap[name]) {
+                radarColorMap[name] = RADAR_COLORS[radarColorIdx % RADAR_COLORS.length];
+                radarColorIdx++;
+            }
+            return radarColorMap[name];
+        }
+
+        function startRadar() {
+            if (radarInterval) return;
+            const canvas = document.getElementById("arena-radar");
+            if (!canvas) return;
+            const rctx = canvas.getContext("2d");
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = 350 * dpr;
+            rctx.scale(dpr, dpr);
+
+            async function draw() {
+                try {
+                    const res = await fetch("/api/agent/live-positions");
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const bots = data.bots || [];
+                    const w = canvas.width / dpr;
+                    const h = 350;
+
+                    // Background
+                    rctx.fillStyle = "#0a0a0f";
+                    rctx.fillRect(0, 0, w, h);
+
+                    // Grid
+                    rctx.strokeStyle = "#1a1a24";
+                    rctx.lineWidth = 0.5;
+                    for (let gx = 0; gx < w; gx += 50) { rctx.beginPath(); rctx.moveTo(gx, 0); rctx.lineTo(gx, h); rctx.stroke(); }
+                    for (let gy = 0; gy < h; gy += 50) { rctx.beginPath(); rctx.moveTo(0, gy); rctx.lineTo(w, gy); rctx.stroke(); }
+
+                    if (bots.length === 0) {
+                        rctx.fillStyle = "#555";
+                        rctx.font = "14px 'Instrument Sans', sans-serif";
+                        rctx.textAlign = "center";
+                        rctx.fillText("Waiting for bots to enter arena...", w / 2, h / 2);
+                        return;
+                    }
+
+                    // Map bounds
+                    const MX0 = -1500, MX1 = 3000, MY0 = -2500, MY1 = 3500;
+                    const pad = 40;
+
+                    bots.forEach((bot) => {
+                        const color = getRadarColor(bot.name);
+                        const cx = pad + ((bot.x - MX0) / (MX1 - MX0)) * (w - pad * 2);
+                        const cy = pad + ((MY1 - bot.y) / (MY1 - MY0)) * (h - pad * 2);
+                        const r = 7;
+
+                        // Glow
+                        const grad = rctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
+                        grad.addColorStop(0, color + "44");
+                        grad.addColorStop(1, color + "00");
+                        rctx.fillStyle = grad;
+                        rctx.beginPath();
+                        rctx.arc(cx, cy, r * 3, 0, Math.PI * 2);
+                        rctx.fill();
+
+                        // Dot
+                        rctx.fillStyle = color;
+                        rctx.beginPath();
+                        rctx.arc(cx, cy, r, 0, Math.PI * 2);
+                        rctx.fill();
+                        rctx.strokeStyle = "#fff";
+                        rctx.lineWidth = 1.5;
+                        rctx.stroke();
+
+                        // Name
+                        rctx.fillStyle = "#E8E4DE";
+                        rctx.font = "bold 10px 'Space Grotesk', sans-serif";
+                        rctx.textAlign = "center";
+                        rctx.fillText(bot.name, cx, cy - r - 5);
+
+                        // Health bar
+                        if (bot.health != null) {
+                            const bw = 24, bh = 3, bx = cx - bw / 2, by = cy + r + 4;
+                            const hp = Math.max(0, Math.min(1, bot.health / 100));
+                            rctx.fillStyle = "#333";
+                            rctx.fillRect(bx, by, bw, bh);
+                            rctx.fillStyle = hp > 0.6 ? "#00FF88" : hp > 0.3 ? "#FFB800" : "#FF3B30";
+                            rctx.fillRect(bx, by, bw * hp, bh);
+                        }
+                    });
+
+                    // Legend
+                    document.getElementById("arena-legend").innerHTML = bots.map(b =>
+                        `<span style="display:flex;align-items:center;gap:0.3rem;">` +
+                        `<span style="width:8px;height:8px;border-radius:50%;background:${getRadarColor(b.name)};display:inline-block;"></span>` +
+                        `${escapeHtml(b.name)}${b.health != null ? " (HP:" + b.health + ")" : ""}` +
+                        `</span>`
+                    ).join("");
+                } catch (e) { /* silent */ }
+            }
+
+            draw();
+            radarInterval = setInterval(draw, 500);
+        }
+
+        function stopRadar() {
+            if (radarInterval) { clearInterval(radarInterval); radarInterval = null; }
         }
 
         function connectWs() {
