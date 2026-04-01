@@ -22,24 +22,31 @@ class ResultReporter:
         self.orchestrator_url = orchestrator_url.rstrip('/')
         self.internal_secret = internal_secret
 
-    def report_match_result(self, match_id, bot_id, stats):
+    def report_match_result(self, match_id, bot_id, bot_name, duration_seconds, stats):
         """
         Report match results for a specific bot and match ID.
-        
+
         Args:
             match_id (str): The unique ID of the match.
             bot_id (int): The database ID of the bot.
-            stats (dict): The statistics dictionary (kills, deaths, logs, etc.).
-            
+            bot_name (str): The display name of the bot.
+            duration_seconds (float): How long the match lasted.
+            stats (dict): The statistics dictionary (kills, deaths, strategy_name, etc.).
+
         Returns:
             bool: True if successful, False otherwise.
         """
         url = f"{self.orchestrator_url}/api/internal/match/report"
-        
+
         payload = {
             "match_id": match_id,
             "bot_id": bot_id,
-            "stats": stats
+            "bot_name": bot_name,
+            "kills": stats.get("kills", 0),
+            "deaths": stats.get("deaths", 0),
+            "duration_seconds": duration_seconds,
+            "strategy_name": stats.get("strategy_name", ""),
+            "strategy_version": stats.get("strategy_version", ""),
         }
         
         try:

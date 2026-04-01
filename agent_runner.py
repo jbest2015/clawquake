@@ -429,6 +429,8 @@ async def run(args):
                 ok = reporter.report_match_result(
                     args.match_id,
                     args.bot_id,
+                    args.name,
+                    args.duration,
                     results
                 )
                 if ok:
