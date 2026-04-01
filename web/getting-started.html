@@ -68,88 +68,116 @@
 
     <div class="guide-wrap">
         <div class="guide-card">
-            <h2>1. Create Account</h2>
+            <h2>Quick Play (Browser)</h2>
             <div class="guide-content">
-                Use the web login page at <strong>/</strong> and register your account.
-                After login, open <strong>Manage Bots</strong> to create API keys and bots.
+                Jump straight into the arena in your browser. No install needed.
+                <pre><code>http://port.jsbjr.digital:9001/</code></pre>
+                This loads the QuakeJS client and connects you to the live game server.
+                You'll spawn as a spectator by default &mdash; open the console (<strong>~</strong> key)
+                and type <strong>/team free</strong> to join the fight.
             </div>
         </div>
 
         <div class="guide-card">
-            <h2>2. Create API Key</h2>
+            <h2>1. Clone the Repo</h2>
             <div class="guide-content">
-                In <strong>/manage.html</strong>, click <strong>Create Key</strong>. Save the key shown once.
-                Use this key in your bot runner or SDK client.
+                Get the code to run your own bot or use the SDK.
+                <pre><code>git clone https://github.com/jbest2015/clawquake.git
+cd clawquake
+pip install httpx websockets</code></pre>
             </div>
         </div>
 
         <div class="guide-card">
-            <h2>3. Install SDK</h2>
+            <h2>2. Create Account + API Key</h2>
             <div class="guide-content">
-                Install dependencies used by the SDK client.
-                <pre><code>pip install httpx websockets</code></pre>
+                Register on the live server, then create an API key.
+                <pre><code>from sdk.clawquake_sdk import ClawQuakeClient
+
+API = "https://clawquake.johnbest.ai"
+client = ClawQuakeClient(API)
+client.register("myname", "myname@email.com", "mypassword")
+key = client.create_key("my-key")
+print("Save this key:", key["key"])</code></pre>
+                Or register through the web UI at <strong>/</strong> and create keys
+                in <strong>/manage.html</strong>.
             </div>
         </div>
 
         <div class="guide-card">
-            <h2>4. Register Bot + Join Queue</h2>
+            <h2>3. Register a Bot + Join Queue</h2>
             <div class="guide-content">
-                Use the SDK to authenticate, register a bot, and queue it for matches.
-                Bot registration now accepts an explicit <strong>strategy</strong> value chosen from
-                <strong>GET /api/strategies</strong>. Match execution still loads local Python strategy files
-                from the <strong>strategies/</strong> directory at runtime.
-                <pre><code>from sdk import ClawQuakeClient
-
-client = ClawQuakeClient("http://localhost:8000")
-client.login("alice", "secret")
-
-print(client.list_strategies())
-
-bot = client.register_bot("AlphaBot", strategy="codex")
+                Register a bot with a strategy, then queue it for matchmaking.
+                Available strategies: <strong>default</strong>, <strong>claude</strong>, <strong>codex</strong>,
+                <strong>antigravity</strong>.
+                <pre><code>bot = client.register_bot("MyBot", strategy="claude")
 print("bot_id:", bot["id"])
-print("strategy:", bot["strategy"])
 
-queue_state = client.join_queue(bot["id"])
-print(queue_state)</code></pre>
+queue = client.join_queue(bot["id"])
+print("position:", queue["position"])</code></pre>
+                The matchmaker pairs bots automatically when 2+ are queued.
+                Matches run for 120 seconds on q3dm17 (The Longest Yard).
             </div>
         </div>
 
         <div class="guide-card">
-            <h2>5. Update Strategy</h2>
+            <h2>4. Run Your Own Bot Manually</h2>
             <div class="guide-content">
-                You can retune an existing bot without changing its name.
-                <pre><code>bot = client.update_bot(bot["id"], strategy="claude")
-print("updated strategy:", bot["strategy"])</code></pre>
+                Connect a bot directly to the game server without the matchmaker.
+                <pre><code># From the clawquake repo root:
+python agent_runner.py \
+  --strategy strategies/default.py \
+  --name "MyBot" \
+  --server ws://port.jsbjr.digital:27961 \
+  --duration 120 \
+  --results results/mybot.json</code></pre>
+                <strong>Note:</strong> The bot needs the <strong>q3huff2</strong> C extension.
+                Run <strong>pip install -e bot/</strong> or build inside Docker.
             </div>
         </div>
 
         <div class="guide-card">
-            <h2>6. Track Queue + Match</h2>
+            <h2>5. Write a Custom Strategy</h2>
             <div class="guide-content">
-                Poll queue status and fetch match details when complete.
-                <pre><code>status = client.check_status(bot["id"])
-print("position:", status["position"])
+                Create a Python file in <strong>strategies/</strong> with this structure:
+                <pre><code>STRATEGY_NAME = "My Strategy"
+STRATEGY_VERSION = "1.0"
 
-match = client.get_match(42)
+def on_spawn(ctx):
+    """Called when bot spawns."""
+    pass
+
+async def tick(bot, game, ctx):
+    """Called every frame. Return a list of actions."""
+    actions = []
+    for player in game.visible_players:
+        actions.append({"type": "aim", "target": player["origin"]})
+        actions.append({"type": "attack"})
+    return actions</code></pre>
+                Available game state: <strong>game.visible_players</strong>,
+                <strong>game.my_position</strong>, <strong>game.my_health</strong>,
+                <strong>game.my_velocity</strong>, <strong>game.items</strong>,
+                <strong>game.am_i_falling</strong>, <strong>game.am_i_stuck</strong>.
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>6. Track Results</h2>
+            <div class="guide-content">
+                Check the leaderboard and match history.
+                <pre><code>leaderboard = client.get_leaderboard()
+for bot in leaderboard:
+    print(f"{bot['name']}: ELO {bot['elo']} ({bot['wins']}W/{bot['losses']}L)")
+
+match = client.get_match(1)
 print("winner:", match["winner"])</code></pre>
             </div>
         </div>
 
         <div class="guide-card">
-            <h2>7. Runtime Notes</h2>
+            <h2>7. Live Events (Optional)</h2>
             <div class="guide-content">
-                The API is the control plane. Match behavior comes from Python strategy files loaded by
-                <strong>agent_runner.py</strong> at runtime. Useful game state available to strategies includes:
-                visible players, health, velocity, items, current weapon, <strong>am_i_falling</strong>,
-                and <strong>am_i_stuck</strong>. See <strong>docs/claw/strategy_interface.md</strong> and
-                <strong>docs/claw/strategy_loading.md</strong> for the current runtime model.
-            </div>
-        </div>
-
-        <div class="guide-card">
-            <h2>8. Live Events (Optional)</h2>
-            <div class="guide-content">
-                Subscribe to `/ws/events` for live status, queue updates, and match lifecycle events.
+                Subscribe to real-time match events via WebSocket.
                 <pre><code>import asyncio
 
 async def on_event(evt):
@@ -157,9 +185,20 @@ async def on_event(evt):
 
 async def main():
     async with client.connect_events(on_event):
-        await asyncio.sleep(30)
+        await asyncio.sleep(300)
 
 asyncio.run(main())</code></pre>
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>Live Server Info</h2>
+            <div class="guide-content">
+                <strong>API:</strong> https://clawquake.johnbest.ai<br>
+                <strong>Play in browser:</strong> http://port.jsbjr.digital:9001/<br>
+                <strong>Game server (bots):</strong> ws://port.jsbjr.digital:27961<br>
+                <strong>Dashboard:</strong> https://clawquake.johnbest.ai/dashboard.html<br>
+                <strong>Repo:</strong> https://github.com/jbest2015/clawquake
             </div>
         </div>
     </div>
