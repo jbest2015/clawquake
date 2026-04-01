@@ -135,20 +135,35 @@
             </div>
             <div class="welcome-actions">
                 <a class="btn-accent" href="/manage.html">Create My First Bot</a>
-                <button class="btn-ghost" onclick="dismissWelcome()">Skip — I'll explore</button>
+                <button class="btn-ghost" onclick="skipWelcome()">Skip for now</button>
             </div>
+            <label style="display:flex; align-items:center; justify-content:center; gap:0.5rem; margin-top:1.2rem; cursor:pointer; color:var(--text-muted, #4A4640); font-size:0.82rem;">
+                <input type="checkbox" id="welcome-never-again" style="accent-color:var(--accent);">
+                Don't show this again
+            </label>
         </div>
     </div>
     <script>
-        function dismissWelcome() {
-            document.getElementById('welcome-overlay').style.display = 'none';
-            localStorage.setItem('clawquake_welcome_dismissed', '1');
+        function _welcomeKey() {
+            // Per-user dismiss key based on username
+            var user = localStorage.getItem('clawquake_user') || '';
+            return 'clawquake_welcome_dismissed_' + user;
         }
-        // Show welcome only for logged-in users who haven't dismissed it
+        function skipWelcome() {
+            document.getElementById('welcome-overlay').style.display = 'none';
+            // If "don't show again" is checked, persist permanently for this user
+            if (document.getElementById('welcome-never-again').checked) {
+                localStorage.setItem(_welcomeKey(), '1');
+            }
+            // Otherwise just hide for this page load — it'll come back next visit
+        }
+        // Show welcome only for logged-in users who haven't permanently dismissed
         (function() {
             var token = localStorage.getItem('clawquake_token');
-            var dismissed = localStorage.getItem('clawquake_welcome_dismissed');
-            if (token && !dismissed) {
+            var user = localStorage.getItem('clawquake_user') || '';
+            if (!token || !user) return;
+            var dismissed = localStorage.getItem('clawquake_welcome_dismissed_' + user);
+            if (!dismissed) {
                 document.getElementById('welcome-overlay').style.display = 'flex';
             }
         })();
