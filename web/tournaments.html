@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake — All Tournaments</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .page-wrap {
+            max-width: 1100px;
+            margin: 1.5rem auto 3rem;
+            padding: 0 1rem;
+        }
+
+        /* Create form */
+        .create-card {
+            background: var(--bg-card, #141418);
+            border: 1px solid var(--border, #2A2824);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .create-card h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.15rem;
+            margin: 0 0 1rem;
+            color: var(--text-primary, #E8E4DE);
+        }
+
+        .create-form {
+            display: flex;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .form-field label {
+            font-size: 0.78rem;
+            color: var(--text-secondary, #7A7670);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .form-field input,
+        .form-field select {
+            padding: 0.75rem 0.95rem;
+            background: var(--bg-input, rgba(255, 255, 255, 0.04));
+            border: 1px solid var(--border, #2A2824);
+            border-radius: 6px;
+            color: var(--text-primary, #E8E4DE);
+            font-family: 'Instrument Sans', sans-serif;
+            font-size: 0.95rem;
+        }
+
+        .form-field input::placeholder {
+            color: var(--text-secondary, #7A7670);
+        }
+
+        .form-field input:focus,
+        .form-field select:focus {
+            outline: none;
+            border-color: var(--accent, #FF6A00);
+        }
+
+        .create-btn {
+            padding: 0.75rem 1.6rem;
+            background: var(--accent, #FF6A00);
+            color: #0C0C0F;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.95rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: opacity 0.15s;
+        }
+
+        .create-btn:hover {
+            opacity: 0.88;
+        }
+
+        .create-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .form-message {
+            width: 100%;
+            min-height: 1.3rem;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .form-message.success {
+            color: var(--success, #00FF88);
+        }
+
+        .form-message.error {
+            color: var(--error, #FF3B30);
+        }
+
+        /* Section headings */
+        .section-heading {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            color: var(--text-primary, #E8E4DE);
+            margin: 2rem 0 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .section-heading .count-badge {
+            font-size: 0.78rem;
+            font-weight: 400;
+            color: var(--text-secondary, #7A7670);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.15rem 0.55rem;
+            border-radius: 999px;
+        }
+
+        /* Card grid */
+        .tournament-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .tournament-card {
+            background: var(--bg-card, #141418);
+            border: 1px solid var(--border, #2A2824);
+            border-radius: 10px;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            transition: border-color 0.2s;
+        }
+
+        .tournament-card:hover {
+            border-color: rgba(255, 106, 0, 0.35);
+        }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .card-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary, #E8E4DE);
+            line-height: 1.3;
+        }
+
+        .card-desc {
+            color: var(--text-secondary, #7A7670);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .card-meta {
+            font-size: 0.82rem;
+            color: var(--text-secondary, #7A7670);
+        }
+
+        /* Status badge */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .status-pill.pending {
+            color: var(--accent, #FF6A00);
+            border: 1px solid rgba(255, 106, 0, 0.4);
+            background: rgba(255, 106, 0, 0.08);
+        }
+
+        .status-pill.active {
+            color: var(--success, #00FF88);
+            border: 1px solid rgba(0, 255, 136, 0.4);
+            background: rgba(0, 255, 136, 0.08);
+        }
+
+        .status-pill.completed {
+            color: var(--text-secondary, #7A7670);
+            border: 1px solid var(--border, #2A2824);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* Pulsing dot */
+        .pulse-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--success, #00FF88);
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.5); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 5px rgba(0, 255, 136, 0); }
+        }
+
+        /* Format badge */
+        .format-pill {
+            font-size: 0.78rem;
+            color: var(--text-secondary, #7A7670);
+            border: 1px solid var(--border, #2A2824);
+            border-radius: 999px;
+            padding: 0.18rem 0.55rem;
+        }
+
+        /* Participant progress bar */
+        .progress-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary, #7A7670);
+        }
+
+        .progress-track {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent, #FF6A00);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        /* Winner display */
+        .winner-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.9rem;
+            color: var(--success, #00FF88);
+            font-weight: 600;
+        }
+
+        .winner-icon {
+            font-size: 1rem;
+        }
+
+        /* Round badge */
+        .round-badge {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--success, #00FF88);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            background: rgba(0, 255, 136, 0.06);
+            border-radius: 999px;
+            padding: 0.18rem 0.55rem;
+        }
+
+        .pill-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            align-items: center;
+        }
+
+        /* Card action button */
+        .card-action {
+            margin-top: auto;
+            padding-top: 0.5rem;
+        }
+
+        .card-action .btn {
+            display: inline-block;
+            padding: 0.55rem 1.1rem;
+            font-size: 0.88rem;
+            font-weight: 600;
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            transition: opacity 0.15s;
+        }
+
+        .card-action .btn:hover {
+            opacity: 0.88;
+        }
+
+        .card-action .btn-accent {
+            background: var(--accent, #FF6A00);
+            color: #0C0C0F;
+            border: none;
+        }
+
+        .card-action .btn-green {
+            background: var(--success, #00FF88);
+            color: #0C0C0F;
+            border: none;
+        }
+
+        .card-action .btn-outline {
+            background: transparent;
+            color: var(--text-secondary, #7A7670);
+            border: 1px solid var(--border, #2A2824);
+        }
+
+        /* Empty state */
+        .empty-state {
+            color: var(--text-secondary, #7A7670);
+            font-size: 0.95rem;
+            padding: 1.5rem 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 720px) {
+            .tournament-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .create-form {
+                flex-direction: column;
+            }
+
+            .form-field {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
+            <a class="btn btn-outline" href="/getting-started">Getting Started</a>
+        </div>
+    </div>
+
+    <div class="page-wrap">
+
+        <!-- Create Tournament Form (hidden when not logged in) -->
+        <div class="create-card" id="create-section" style="display: none;">
+            <h2>Create Tournament</h2>
+            <div class="create-form">
+                <div class="form-field" style="flex: 2;">
+                    <label for="t-name">Tournament Name</label>
+                    <input id="t-name" type="text" placeholder="Spring Open" required>
+                </div>
+                <div class="form-field" style="flex: 2;">
+                    <label for="t-desc">Description</label>
+                    <input id="t-desc" type="text" placeholder="e.g. Friday night bot brawl">
+                </div>
+                <div class="form-field" style="flex: 0.8; min-width: 120px;">
+                    <label for="t-max">Max Participants</label>
+                    <select id="t-max">
+                        <option value="4">4</option>
+                        <option value="8" selected>8</option>
+                        <option value="16">16</option>
+                        <option value="32">32</option>
+                    </select>
+                </div>
+                <button class="create-btn" id="create-btn" onclick="createTournament()">Create Tournament</button>
+            </div>
+            <div class="form-message" id="form-message"></div>
+        </div>
+
+        <!-- Open Tournaments -->
+        <h2 class="section-heading">
+            Open Tournaments
+            <span class="count-badge" id="open-count">0</span>
+        </h2>
+        <div class="tournament-grid" id="open-grid">
+            <div class="empty-state">Loading tournaments...</div>
+        </div>
+
+        <!-- Live Tournaments -->
+        <h2 class="section-heading">
+            Live Tournaments
+            <span class="count-badge" id="live-count">0</span>
+        </h2>
+        <div class="tournament-grid" id="live-grid">
+            <div class="empty-state">Loading tournaments...</div>
+        </div>
+
+        <!-- Completed Tournaments -->
+        <h2 class="section-heading">
+            Completed Tournaments
+            <span class="count-badge" id="completed-count">0</span>
+        </h2>
+        <div class="tournament-grid" id="completed-grid">
+            <div class="empty-state">Loading tournaments...</div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem("clawquake_token") || "";
+        let currentUser = null;
+
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text ?? "";
+            return div.innerHTML;
+        }
+
+        function authHeaders() {
+            const h = {};
+            if (token) h["Authorization"] = "Bearer " + token;
+            return h;
+        }
+
+        async function fetchJson(url, options = {}) {
+            const merged = {
+                ...options,
+                headers: { ...(options.headers || {}), ...authHeaders() }
+            };
+            const response = await fetch(url, merged);
+            let data = {};
+            try { data = await response.json(); } catch (e) { data = {}; }
+            return { response, data };
+        }
+
+        function showMessage(text, type) {
+            const el = document.getElementById("form-message");
+            el.textContent = text;
+            el.className = "form-message " + type;
+            if (type === "success") {
+                setTimeout(() => { el.textContent = ""; el.className = "form-message"; }, 4000);
+            }
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return "";
+            const d = new Date(dateStr);
+            return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+        }
+
+        // --- Card renderers ---
+
+        function openCard(t) {
+            const maxP = t.max_participants || 8;
+            const count = t.participant_count || 0;
+            const pct = Math.min((count / maxP) * 100, 100);
+            return `
+                <div class="tournament-card">
+                    <div class="card-top">
+                        <div class="card-name">${escapeHtml(t.name)}</div>
+                        <span class="status-pill pending">Open</span>
+                    </div>
+                    ${t.description ? `<div class="card-desc">${escapeHtml(t.description)}</div>` : ""}
+                    <div class="card-meta">Created by ${escapeHtml(t.creator_name || "Unknown")}</div>
+                    <div class="progress-row">
+                        <span>${count} / ${maxP} bots registered</span>
+                        <div class="progress-track"><div class="progress-fill" style="width: ${pct}%"></div></div>
+                    </div>
+                    <div class="pill-row">
+                        <span class="format-pill">Single Elimination</span>
+                        <span class="card-meta">${formatDate(t.created_at)}</span>
+                    </div>
+                    <div class="card-action">
+                        <a class="btn btn-accent" href="/tournament/${t.id}">View & Join</a>
+                    </div>
+                </div>
+            `;
+        }
+
+        function liveCard(t) {
+            return `
+                <div class="tournament-card">
+                    <div class="card-top">
+                        <div class="card-name">${escapeHtml(t.name)}</div>
+                        <span class="status-pill active"><span class="pulse-dot"></span> Live</span>
+                    </div>
+                    ${t.description ? `<div class="card-desc">${escapeHtml(t.description)}</div>` : ""}
+                    <div class="card-meta">Created by ${escapeHtml(t.creator_name || "Unknown")}</div>
+                    <div class="pill-row">
+                        <span class="round-badge">Round ${t.current_round || 1}</span>
+                        <span class="format-pill">Single Elimination</span>
+                        <span class="card-meta">${t.participant_count || 0} bots</span>
+                    </div>
+                    <div class="card-action">
+                        <a class="btn btn-green" href="/tournament/${t.id}">Watch Live</a>
+                    </div>
+                </div>
+            `;
+        }
+
+        function completedCard(t) {
+            return `
+                <div class="tournament-card">
+                    <div class="card-top">
+                        <div class="card-name">${escapeHtml(t.name)}</div>
+                        <span class="status-pill completed">Completed</span>
+                    </div>
+                    ${t.description ? `<div class="card-desc">${escapeHtml(t.description)}</div>` : ""}
+                    ${t.winner_name ? `
+                        <div class="winner-row">
+                            <span class="winner-icon">&#9733;</span>
+                            <span>${escapeHtml(t.winner_name)}</span>
+                        </div>
+                    ` : ""}
+                    <div class="card-meta">Created by ${escapeHtml(t.creator_name || "Unknown")}</div>
+                    <div class="pill-row">
+                        <span class="format-pill">Single Elimination</span>
+                        <span class="card-meta">${t.participant_count || 0} bots</span>
+                        <span class="card-meta">${formatDate(t.created_at)}</span>
+                    </div>
+                    <div class="card-action">
+                        <a class="btn btn-outline" href="/tournament/${t.id}">View Results</a>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Data loading ---
+
+        async function loadCurrentUser() {
+            if (!token) { currentUser = null; return; }
+            const { response, data } = await fetchJson("/api/auth/me");
+            if (!response.ok) { currentUser = null; return; }
+            currentUser = data;
+        }
+
+        async function loadTournaments() {
+            const { response, data } = await fetchJson("/api/tournaments");
+            if (!response.ok || !Array.isArray(data)) {
+                document.getElementById("open-grid").innerHTML = '<div class="empty-state">Failed to load tournaments.</div>';
+                document.getElementById("live-grid").innerHTML = "";
+                document.getElementById("completed-grid").innerHTML = "";
+                return;
+            }
+
+            const open = data.filter(t => t.status === "pending");
+            const live = data.filter(t => t.status === "active");
+            const completed = data.filter(t => t.status === "completed");
+
+            document.getElementById("open-count").textContent = open.length;
+            document.getElementById("live-count").textContent = live.length;
+            document.getElementById("completed-count").textContent = completed.length;
+
+            document.getElementById("open-grid").innerHTML = open.length
+                ? open.map(openCard).join("")
+                : '<div class="empty-state">No open tournaments. Create one above!</div>';
+
+            document.getElementById("live-grid").innerHTML = live.length
+                ? live.map(liveCard).join("")
+                : '<div class="empty-state">No live tournaments right now.</div>';
+
+            document.getElementById("completed-grid").innerHTML = completed.length
+                ? completed.map(completedCard).join("")
+                : '<div class="empty-state">No completed tournaments yet.</div>';
+        }
+
+        async function createTournament() {
+            if (!currentUser) { showMessage("Log in first.", "error"); return; }
+
+            const name = document.getElementById("t-name").value.trim();
+            const description = document.getElementById("t-desc").value.trim();
+            const max_participants = parseInt(document.getElementById("t-max").value, 10);
+
+            if (!name) { showMessage("Tournament name is required.", "error"); return; }
+
+            const btn = document.getElementById("create-btn");
+            btn.disabled = true;
+
+            const { response, data } = await fetchJson("/api/tournaments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, description: description || undefined, max_participants })
+            });
+
+            btn.disabled = false;
+
+            if (!response.ok) {
+                showMessage(data.detail || "Could not create tournament.", "error");
+                return;
+            }
+
+            document.getElementById("t-name").value = "";
+            document.getElementById("t-desc").value = "";
+            document.getElementById("t-max").value = "8";
+            showMessage("Tournament created!", "success");
+            await loadTournaments();
+        }
+
+        function applyAuthState() {
+            const section = document.getElementById("create-section");
+            if (currentUser) {
+                section.style.display = "block";
+            } else {
+                section.style.display = "none";
+            }
+        }
+
+        async function init() {
+            await loadCurrentUser();
+            applyAuthState();
+            await loadTournaments();
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

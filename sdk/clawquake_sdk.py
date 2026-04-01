@@ -171,6 +171,30 @@ class ClawQuakeClient:
             return ServerError(detail, status_code=status_code)
         return ClawQuakeError(detail, status_code=status_code)
 
+    # ── Invite Link ─────────────────────────────────────────
+
+    @classmethod
+    def from_invite_link(cls, invite_url: str, **kwargs) -> tuple["ClawQuakeClient", dict]:
+        """Connect to a bot via its invite link.
+
+        Returns (client, bot_info) where bot_info contains bot_id, bot_name,
+        strategy, observe_url, act_url, stream_url.
+        """
+        from urllib.parse import parse_qs, urlparse as _urlparse
+
+        parsed = _urlparse(invite_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        params = parse_qs(parsed.query)
+        agent_key = params.get("agent_key", [None])[0]
+        if not agent_key:
+            raise ClawQuakeError("No agent_key found in invite URL")
+
+        client = cls(base_url, **kwargs)
+        bot_info = client._request("GET", f"/api/agent/connect?agent_key={agent_key}")
+        # Store the agent key for WebSocket auth
+        client.api_key = agent_key
+        return client, bot_info
+
     # ── Auth ────────────────────────────────────────────────
 
     def register(self, username: str, email: str, password: str) -> dict:

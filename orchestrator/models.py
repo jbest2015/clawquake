@@ -268,7 +268,9 @@ class TournamentDB(Base):
     __tablename__ = "tournaments"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    description = Column(String, nullable=True, default="")
     format = Column(String, default="single_elim") # single_elim, double_elim
+    max_participants = Column(Integer, default=16)
     created_by_user_id = Column(Integer, nullable=True, index=True)
     status = Column(String, default="pending") # pending, active, completed
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -302,7 +304,9 @@ class TournamentMatchDB(Base):
 
 class TournamentCreate(BaseModel):
     name: str
+    description: str = ""
     format: str = "single_elim"
+    max_participants: int = 16
     seed_by_elo: bool = True
 
 class TournamentJoin(BaseModel):
@@ -311,12 +315,17 @@ class TournamentJoin(BaseModel):
 class TournamentResponse(BaseModel):
     id: int
     name: str
+    description: str = ""
     format: str
-    created_by_user_id: Optional[int]
+    max_participants: int = 16
+    created_by_user_id: Optional[int] = None
+    creator_name: Optional[str] = None
     status: str
     participant_count: int
     current_round: int
-    winner_bot_id: Optional[int]
+    winner_bot_id: Optional[int] = None
+    winner_name: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 # ── Adaptive Learner DB (Anti-Gravity — Batch 4) ────────────
 

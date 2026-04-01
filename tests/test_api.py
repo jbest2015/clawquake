@@ -235,7 +235,7 @@ def test_create_agent_registration(client: TestClient):
     assert data["bot_id"] == bot["id"]
     assert data["name"] == "primary"
     assert data["agent_key"].startswith("cq_")
-    assert "/getting-started?" in data["invite_url"]
+    assert "/bot/invite?" in data["invite_url"]
     assert "agent_key=" in data["invite_url"]
 
 

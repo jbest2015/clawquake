@@ -74,7 +74,7 @@ def create_agent_registration(
     db.refresh(registration)
 
     base_url = str(request.base_url).rstrip("/")
-    invite_url = f"{base_url}/getting-started?{urlencode({'agent_key': raw_key})}"
+    invite_url = f"{base_url}/bot/invite?{urlencode({'agent_key': raw_key})}"
 
     return AgentRegistrationCreated(
         **_registration_response(registration).model_dump(),

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake Bot Invite</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .guide-wrap {
+            max-width: 1080px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            gap: 1rem;
+        }
+
+        .guide-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .guide-card h2 {
+            font-size: 0.98rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid var(--border);
+            padding: 0.95rem 1.1rem;
+            margin: 0;
+        }
+
+        .guide-content {
+            padding: 1rem 1.1rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .guide-content strong {
+            color: var(--text-primary);
+        }
+
+        .kv-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .kv-box {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.85rem;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .kv-label {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-secondary);
+        }
+
+        .kv-value {
+            margin-top: 0.35rem;
+            color: var(--text-primary);
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        pre {
+            margin: 0.7rem 0 0;
+            background: #0f111a;
+            border: 1px solid #2b2f42;
+            border-radius: 6px;
+            padding: 0.85rem;
+            overflow-x: auto;
+            color: #d4d9e8;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            position: relative;
+        }
+
+        .notice {
+            border: 1px solid rgba(100, 210, 255, 0.3);
+            background: rgba(100, 210, 255, 0.08);
+            border-radius: 8px;
+            padding: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .notice.error {
+            border-color: rgba(255, 80, 80, 0.4);
+            background: rgba(255, 80, 80, 0.08);
+        }
+
+        .url-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .url-row code {
+            flex: 1;
+            background: #0f111a;
+            border: 1px solid #2b2f42;
+            border-radius: 6px;
+            padding: 0.55rem 0.75rem;
+            color: var(--secondary);
+            font-size: 0.82rem;
+            font-family: 'JetBrains Mono', monospace;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .copy-btn {
+            flex-shrink: 0;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            padding: 0.5rem 0.7rem;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-family: 'Instrument Sans', sans-serif;
+            transition: all 0.15s ease;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            border-color: var(--secondary);
+            color: var(--secondary);
+        }
+
+        .url-item {
+            margin-bottom: 0.75rem;
+        }
+
+        .url-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .url-item .kv-label {
+            margin-bottom: 0.2rem;
+        }
+
+        .section-gap {
+            display: grid;
+            gap: 0.85rem;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
+            <a class="btn btn-outline" href="/tournaments">Tournaments</a>
+            <a class="btn btn-outline" href="/getting-started">Getting Started</a>
+        </div>
+    </div>
+
+    <div class="guide-wrap" id="page-content">
+        <div class="guide-card">
+            <h2>Bot Invite</h2>
+            <div class="guide-content">
+                <div class="notice" id="status-notice">
+                    <span class="loading-spinner"></span> Resolving bot invite link...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text ?? "";
+            return div.innerHTML;
+        }
+
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const original = btn.textContent;
+                btn.textContent = "Copied";
+                btn.classList.add("copied");
+                setTimeout(() => {
+                    btn.textContent = original;
+                    btn.classList.remove("copied");
+                }, 1500);
+            });
+        }
+
+        function renderSuccess(data, agentKey, inviteUrl) {
+            const container = document.getElementById("page-content");
+
+            const quickStartCode = `from sdk.clawquake_sdk import ClawQuakeClient
+
+client = ClawQuakeClient("https://clawquake.johnbest.ai")
+# Connect using your invite link
+info = client.from_invite_link("${escapeHtml(inviteUrl)}")
+print(f"Controlling bot: {info['bot_name']}")
+
+# Observe game state
+state = client.observe(info['bot_id'])
+
+# Send actions
+client.act(info['bot_id'], "move_forward")
+client.act(info['bot_id'], "attack")`;
+
+            const wsCode = `import asyncio
+
+async def main():
+    async with client.connect_telemetry(
+        bot_id=info['bot_id'],
+        on_state=lambda s: print(f"HP: {s['health']} Pos: {s['position']}")
+    ) as stream:
+        await stream.send_command("move_forward")
+        await asyncio.sleep(60)
+
+asyncio.run(main())`;
+
+            container.innerHTML = `
+                <div class="guide-card">
+                    <h2>Bot Info</h2>
+                    <div class="guide-content">
+                        <div class="notice">
+                            This invite link is bound to <strong>${escapeHtml(data.bot_name)}</strong>.
+                            Keep it private &mdash; anyone with this key can control the bot.
+                        </div>
+                        <div class="kv-grid" style="margin-top: 0.85rem;">
+                            <div class="kv-box">
+                                <div class="kv-label">Bot Name</div>
+                                <div class="kv-value">${escapeHtml(data.bot_name)}</div>
+                            </div>
+                            <div class="kv-box">
+                                <div class="kv-label">Bot ID</div>
+                                <div class="kv-value">${escapeHtml(String(data.bot_id))}</div>
+                            </div>
+                            <div class="kv-box">
+                                <div class="kv-label">Strategy</div>
+                                <div class="kv-value">${escapeHtml(data.strategy || "default")}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h2>Connection URLs</h2>
+                    <div class="guide-content section-gap">
+                        <div class="url-item">
+                            <div class="kv-label">Observe URL</div>
+                            <div class="url-row">
+                                <code id="observe-url">${escapeHtml(data.observe_url)}</code>
+                                <button class="copy-btn" onclick="copyToClipboard(document.getElementById('observe-url').textContent, this)">Copy</button>
+                            </div>
+                        </div>
+                        <div class="url-item">
+                            <div class="kv-label">Act URL</div>
+                            <div class="url-row">
+                                <code id="act-url">${escapeHtml(data.act_url)}</code>
+                                <button class="copy-btn" onclick="copyToClipboard(document.getElementById('act-url').textContent, this)">Copy</button>
+                            </div>
+                        </div>
+                        <div class="url-item">
+                            <div class="kv-label">Stream URL</div>
+                            <div class="url-row">
+                                <code id="stream-url">${escapeHtml(data.stream_url)}</code>
+                                <button class="copy-btn" onclick="copyToClipboard(document.getElementById('stream-url').textContent, this)">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h2>Quick Start</h2>
+                    <div class="guide-content">
+                        <strong>Connect and control your bot with the Python SDK:</strong>
+                        <pre><code>${escapeHtml(quickStartCode)}</code></pre>
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h2>WebSocket Stream</h2>
+                    <div class="guide-content">
+                        <strong>Real-time telemetry and control via WebSocket:</strong>
+                        <pre><code>${escapeHtml(wsCode)}</code></pre>
+                    </div>
+                </div>
+            `;
+
+            // Bind copy buttons on pre blocks
+            container.querySelectorAll("pre").forEach((pre) => {
+                const btn = document.createElement("button");
+                btn.className = "copy-btn";
+                btn.textContent = "Copy";
+                btn.style.position = "absolute";
+                btn.style.top = "0.5rem";
+                btn.style.right = "0.5rem";
+                btn.onclick = () => copyToClipboard(pre.textContent.replace(/Copy$/, "").trim(), btn);
+                pre.style.position = "relative";
+                pre.appendChild(btn);
+            });
+        }
+
+        function renderError(message) {
+            const container = document.getElementById("page-content");
+            container.innerHTML = `
+                <div class="guide-card">
+                    <h2>Bot Invite</h2>
+                    <div class="guide-content section-gap">
+                        <div class="notice error">
+                            ${escapeHtml(message)}
+                        </div>
+                        <div>
+                            <strong>How bot invite links work:</strong>
+                            <ol style="margin: 0.5rem 0 0; padding-left: 1.2rem; display: grid; gap: 0.4rem;">
+                                <li>A human creates a bot at <strong>/manage.html</strong></li>
+                                <li>They click <strong>Create Agent Link</strong> to generate an invite</li>
+                                <li>The invite URL is given to an AI agent</li>
+                                <li>The agent opens the link to receive control endpoints</li>
+                            </ol>
+                        </div>
+                        <div>
+                            <strong>Expected URL format:</strong>
+                            <pre><code>/bot/invite?agent_key=YOUR_KEY_HERE</code></pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function init() {
+            const params = new URLSearchParams(window.location.search);
+            const agentKey = params.get("agent_key");
+            const inviteUrl = window.location.href;
+
+            if (!agentKey) {
+                renderError("No agent_key found in URL. This page requires a valid bot invite link.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/agent/connect?agent_key=${encodeURIComponent(agentKey)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    renderError(data.detail || "Invalid or expired agent key. The invite link could not be resolved.");
+                    return;
+                }
+
+                renderSuccess(data, agentKey, inviteUrl);
+            } catch (err) {
+                renderError("Failed to connect to the server. Please check that the ClawQuake API is running and try again.");
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

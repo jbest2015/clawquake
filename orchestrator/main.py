@@ -9,6 +9,7 @@ import os
 from contextlib import suppress
 from datetime import datetime
 from queue import SimpleQueue
+from typing import Optional
 
 from fastapi import FastAPI, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -201,6 +202,24 @@ async def _websocket_publish_loop():
 
 
 matchmaker_task: asyncio.Task | None = None
+
+
+@app.on_event("startup")
+async def _migrate_tournament_columns():
+    """Add new tournament columns if missing (SQLite ALTER TABLE)."""
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text
+        cols = {row[1] for row in db.execute(text("PRAGMA table_info(tournaments)")).fetchall()}
+        if "description" not in cols:
+            db.execute(text("ALTER TABLE tournaments ADD COLUMN description TEXT DEFAULT ''"))
+        if "max_participants" not in cols:
+            db.execute(text("ALTER TABLE tournaments ADD COLUMN max_participants INTEGER DEFAULT 16"))
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
 
 
 @app.on_event("startup")
@@ -640,28 +659,40 @@ def get_match_detail(
 @app.post("/api/tournaments", response_model=TournamentResponse)
 def create_tournament(
     t: TournamentCreate,
-    user: UserDB = Depends(get_current_user), # Any user can create
+    user: UserDB = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     system = TournamentBracket(db)
     bracket = system.create_tournament(t.name, t.format, created_by_user_id=user.id)
+    # Set extra fields not handled by bracket engine
+    bracket.description = t.description
+    bracket.max_participants = t.max_participants
+    db.commit()
+    db.refresh(bracket)
     return TournamentResponse(
-        id=bracket.id, name=bracket.name, format=bracket.format,
-        created_by_user_id=bracket.created_by_user_id, status="pending", participant_count=0, current_round=0,
-        winner_bot_id=None
+        id=bracket.id, name=bracket.name, description=bracket.description or "",
+        format=bracket.format, max_participants=bracket.max_participants or 16,
+        created_by_user_id=bracket.created_by_user_id, creator_name=user.username,
+        status="pending", participant_count=0, current_round=0,
+        winner_bot_id=None, created_at=bracket.created_at,
     )
 
 
 @app.get("/api/tournaments", response_model=list[TournamentResponse])
 def list_tournaments(
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    tournaments = (
-        db.query(TournamentDB)
-        .order_by(TournamentDB.created_at.desc())
-        .limit(100)
-        .all()
-    )
+    query = db.query(TournamentDB).order_by(TournamentDB.created_at.desc())
+    if status:
+        query = query.filter(TournamentDB.status == status)
+    tournaments = query.limit(100).all()
+
+    # Batch-load creator names and winner names
+    user_ids = {t.created_by_user_id for t in tournaments if t.created_by_user_id}
+    user_map = {u.id: u.username for u in db.query(UserDB).filter(UserDB.id.in_(user_ids)).all()} if user_ids else {}
+    bot_name_map = _bot_name_map(db)
+
     items: list[TournamentResponse] = []
     for tournament in tournaments:
         participant_count = (
@@ -673,12 +704,17 @@ def list_tournaments(
             TournamentResponse(
                 id=tournament.id,
                 name=tournament.name,
+                description=getattr(tournament, "description", "") or "",
                 format=tournament.format,
+                max_participants=getattr(tournament, "max_participants", 16) or 16,
                 created_by_user_id=tournament.created_by_user_id,
+                creator_name=user_map.get(tournament.created_by_user_id),
                 status=tournament.status,
                 participant_count=participant_count,
                 current_round=tournament.current_round,
                 winner_bot_id=tournament.winner_bot_id,
+                winner_name=bot_name_map.get(tournament.winner_bot_id),
+                created_at=tournament.created_at,
             )
         )
     return items
@@ -697,18 +733,55 @@ def join_tournament(
     if tournament.status != "pending":
         raise HTTPException(status_code=400, detail="Tournament is not accepting new bots")
 
+    # Enforce max participants
+    max_p = getattr(tournament, "max_participants", 16) or 16
+    current_count = db.query(TournamentParticipantDB).filter_by(tournament_id=tid).count()
+    if current_count >= max_p:
+        raise HTTPException(status_code=400, detail=f"Tournament is full ({max_p} bots max)")
+
     bot = db.query(BotDB).filter_by(id=join.bot_id).first()
     if not bot:
         raise HTTPException(status_code=404, detail="Bot not found")
-        
-    # Check ownership
+
     if bot.owner_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="Not your bot")
-        
+
     success = system.add_participant(tid, join.bot_id)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to join (already present or tournament active)")
-    return {"joined": True, "bot": bot.name}
+    return {"joined": True, "bot": bot.name, "participants": current_count + 1, "max": max_p}
+
+
+@app.delete("/api/tournaments/{tid}/leave")
+def leave_tournament(
+    tid: int,
+    bot_id: int,
+    user: UserDB = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    tournament = db.query(TournamentDB).filter_by(id=tid).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if tournament.status != "pending":
+        raise HTTPException(status_code=400, detail="Cannot leave after tournament has started")
+
+    bot = db.query(BotDB).filter_by(id=bot_id).first()
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    if bot.owner_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail="Not your bot")
+
+    participant = (
+        db.query(TournamentParticipantDB)
+        .filter_by(tournament_id=tid, bot_id=bot_id)
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Bot not in this tournament")
+
+    db.delete(participant)
+    db.commit()
+    return {"left": True, "bot": bot.name}
 
 @app.post("/api/tournaments/{tid}/start")
 async def start_tournament(
@@ -769,17 +842,33 @@ def get_tournament(
             })
         rounds_json[r_num] = m_list
         
+    # Get creator name
+    creator = db.query(UserDB).filter(UserDB.id == t.created_by_user_id).first() if t.created_by_user_id else None
+
+    # Get bot details (ELO, owner) for participants
+    bot_ids = [p.bot_id for p in participants]
+    bots_detail = {b.id: b for b in db.query(BotDB).filter(BotDB.id.in_(bot_ids)).all()} if bot_ids else {}
+    owner_ids = {b.owner_id for b in bots_detail.values()}
+    owner_map = {u.id: u.username for u in db.query(UserDB).filter(UserDB.id.in_(owner_ids)).all()} if owner_ids else {}
+
     return {
         "info": TournamentResponse(
-             id=t.id, name=t.name, format=t.format, status=t.status,
-             created_by_user_id=t.created_by_user_id,
+             id=t.id, name=t.name, description=getattr(t, "description", "") or "",
+             format=t.format, max_participants=getattr(t, "max_participants", 16) or 16,
+             status=t.status, created_by_user_id=t.created_by_user_id,
+             creator_name=creator.username if creator else None,
              participant_count=count, current_round=t.current_round,
-             winner_bot_id=t.winner_bot_id
+             winner_bot_id=t.winner_bot_id,
+             winner_name=bot_names.get(t.winner_bot_id),
+             created_at=t.created_at,
         ),
         "participants": [
             {
                 "bot_id": participant.bot_id,
                 "bot_name": bot_names.get(participant.bot_id, f"Bot {participant.bot_id}"),
+                "owner": owner_map.get(bots_detail[participant.bot_id].owner_id) if participant.bot_id in bots_detail else None,
+                "elo": bots_detail[participant.bot_id].elo if participant.bot_id in bots_detail else None,
+                "strategy": bots_detail[participant.bot_id].strategy if participant.bot_id in bots_detail else None,
                 "seed": participant.seed,
                 "eliminated": bool(participant.eliminated),
             }

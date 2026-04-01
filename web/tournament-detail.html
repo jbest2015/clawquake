@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake — Tournament</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .page-wrap {
+            max-width: 1200px;
+            margin: 1.5rem auto 3rem;
+            padding: 0 1rem;
+            display: grid;
+            gap: 1rem;
+        }
+
+        /* ── Tournament Header Bar ───────────────────────── */
+
+        .tournament-header {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .tournament-header-left {
+            display: grid;
+            gap: 0.5rem;
+            flex: 1;
+            min-width: 280px;
+        }
+
+        .tournament-name {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .tournament-desc {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .tournament-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            align-items: center;
+            margin-top: 0.25rem;
+        }
+
+        .meta-pill {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .meta-pill.creator {
+            color: var(--text-primary);
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            font-family: var(--font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .status-badge.pending {
+            color: var(--accent);
+            border: 1px solid rgba(255, 106, 0, 0.4);
+            background: rgba(255, 106, 0, 0.08);
+        }
+
+        .status-badge.active {
+            color: var(--secondary);
+            border: 1px solid rgba(0, 255, 136, 0.4);
+            background: rgba(0, 255, 136, 0.08);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .status-badge.completed {
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+        }
+
+        .tournament-header-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.65rem;
+        }
+
+        .champion-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.55rem 1.1rem;
+            border-radius: 8px;
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 1rem;
+            color: #0C0C0F;
+            background: linear-gradient(135deg, var(--accent), #FFB800);
+        }
+
+        .champion-badge::before {
+            content: "\1F3C6";
+        }
+
+        /* ── Register Bot Section ────────────────────────── */
+
+        .register-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .register-card h3 {
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            margin: 0 0 1rem;
+        }
+
+        .register-form {
+            display: flex;
+            gap: 0.65rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .register-form select {
+            flex: 1;
+            min-width: 220px;
+            padding: 0.75rem 0.95rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+        }
+
+        .register-form select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .register-form select option[disabled] {
+            color: var(--text-secondary);
+        }
+
+        .register-error {
+            min-height: 1.2rem;
+            color: var(--error);
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .participant-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 1rem;
+        }
+
+        .p-chip {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 0.3rem 0.8rem;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .p-chip .elo {
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }
+
+        .p-chip .owner {
+            color: var(--text-muted, #4A4640);
+        }
+
+        /* ── Participants Table ───────────────────────────── */
+
+        .participants-table-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+
+        .participants-table-wrap h3 {
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            margin: 0 0 1rem;
+        }
+
+        .participants-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+        }
+
+        .participants-table th {
+            text-align: left;
+            padding: 0.65rem 0.8rem;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .participants-table td {
+            padding: 0.7rem 0.8rem;
+            border-bottom: 1px solid rgba(42, 40, 36, 0.5);
+            color: var(--text-primary);
+        }
+
+        .participants-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .participants-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .table-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
+        .table-status.active-player {
+            color: var(--secondary);
+        }
+
+        .table-status.eliminated {
+            color: var(--error);
+            opacity: 0.75;
+        }
+
+        .table-elo {
+            font-family: var(--font-mono);
+            font-size: 0.88rem;
+        }
+
+        .table-strategy {
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        /* ── Bracket Visualization ────────────────────────── */
+
+        .bracket-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+
+        .bracket-section h3 {
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            margin: 0 0 1rem;
+        }
+
+        .bracket {
+            display: flex;
+            gap: 0;
+            min-height: 200px;
+            padding-bottom: 0.5rem;
+        }
+
+        .round-col {
+            display: flex;
+            flex-direction: column;
+            min-width: 230px;
+        }
+
+        .round-header {
+            text-align: center;
+            padding: 0.5rem 0.8rem;
+            font-family: var(--font-display);
+            font-size: 0.82rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+        }
+
+        .round-matches {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            justify-content: space-around;
+            gap: 0.5rem;
+        }
+
+        .match-cell {
+            display: flex;
+            align-items: center;
+        }
+
+        .match-connector {
+            width: 24px;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .match-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            width: 200px;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .match-slot {
+            padding: 0.5rem 0.7rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.88rem;
+            border-bottom: 1px solid rgba(42, 40, 36, 0.4);
+            transition: background var(--duration-short);
+        }
+
+        .match-slot:last-of-type {
+            border-bottom: none;
+        }
+
+        .match-slot .bot-name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+
+        .match-slot .win-marker {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--secondary);
+        }
+
+        .match-slot.winner {
+            background: rgba(0, 255, 136, 0.06);
+            color: var(--secondary);
+        }
+
+        .match-slot.winner .bot-name {
+            font-weight: 700;
+        }
+
+        .match-slot.loser {
+            opacity: 0.5;
+        }
+
+        .match-slot.tbd {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .match-slot.bye {
+            color: var(--text-muted, #4A4640);
+            font-style: italic;
+        }
+
+        .match-indicator {
+            padding: 0.25rem 0.7rem;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid rgba(42, 40, 36, 0.4);
+        }
+
+        .match-indicator .live-dot {
+            color: var(--secondary);
+            font-weight: 600;
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+
+        .match-indicator .played-tag {
+            color: var(--text-muted, #4A4640);
+        }
+
+        /* Connector lines between rounds */
+        .round-col:not(:first-child) .match-cell::before {
+            content: "";
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: var(--border);
+            flex-shrink: 0;
+            margin-right: -1px;
+        }
+
+        .round-col:not(:last-child) .match-cell::after {
+            content: "";
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: var(--border);
+            flex-shrink: 0;
+            margin-left: -1px;
+        }
+
+        /* ── Live Feed ────────────────────────────────────── */
+
+        .live-feed {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .live-feed h3 {
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            margin: 0 0 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .live-dot-header {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--secondary);
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+
+        .feed-log {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            max-height: 220px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            line-height: 1.65;
+            color: var(--text-secondary);
+        }
+
+        .feed-log .event-line {
+            padding: 0.15rem 0;
+        }
+
+        .feed-log .event-time {
+            color: var(--text-muted, #4A4640);
+            margin-right: 0.5rem;
+        }
+
+        .feed-log .event-match {
+            color: var(--accent);
+        }
+
+        .feed-log .event-advance {
+            color: var(--secondary);
+        }
+
+        .feed-log .event-complete {
+            color: #FFB800;
+            font-weight: 600;
+        }
+
+        .ws-status {
+            font-size: 0.75rem;
+            color: var(--text-muted, #4A4640);
+            margin-top: 0.4rem;
+        }
+
+        .ws-status.connected {
+            color: var(--secondary);
+        }
+
+        /* ── Shared / utility ─────────────────────────────── */
+
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            margin-bottom: 0.8rem;
+        }
+
+        .empty-state {
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            padding: 1rem 0;
+        }
+
+        .error-banner {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            border-radius: 8px;
+            padding: 1rem 1.2rem;
+            color: var(--error);
+            font-size: 0.92rem;
+        }
+
+        @media (max-width: 768px) {
+            .tournament-header {
+                flex-direction: column;
+            }
+
+            .tournament-header-right {
+                align-items: flex-start;
+            }
+
+            .match-card {
+                width: 180px;
+                min-width: 180px;
+            }
+
+            .round-col {
+                min-width: 200px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/tournaments">Tournaments</a>
+            <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
+        </div>
+    </div>
+
+    <div class="page-wrap">
+        <!-- Loading / Error state -->
+        <div id="loading-state" class="empty-state" style="text-align:center; padding:3rem 0;">
+            Loading tournament...
+        </div>
+        <div id="error-state" class="error-banner" style="display:none;"></div>
+
+        <!-- Tournament content (hidden until loaded) -->
+        <div id="tournament-content" style="display:none;">
+
+            <!-- Tournament Header Bar -->
+            <div class="tournament-header" id="tournament-header">
+                <div class="tournament-header-left">
+                    <h2 class="tournament-name" id="t-name"></h2>
+                    <div class="tournament-desc" id="t-desc"></div>
+                    <div class="tournament-meta" id="t-meta"></div>
+                </div>
+                <div class="tournament-header-right" id="t-actions"></div>
+            </div>
+
+            <!-- Register Bot (pending only, logged in only) -->
+            <div class="register-card" id="register-section" style="display:none;">
+                <h3>Register a Bot</h3>
+                <div class="register-form">
+                    <select id="bot-select">
+                        <option value="" disabled selected>Select one of your bots</option>
+                    </select>
+                    <button class="btn btn-primary" id="register-btn" onclick="registerBot()">Register Bot</button>
+                </div>
+                <div class="register-error" id="register-error"></div>
+                <div class="participant-chips" id="participant-chips"></div>
+            </div>
+
+            <!-- Participants Table -->
+            <div class="participants-table-wrap" id="participants-section">
+                <h3>Participants</h3>
+                <div id="participants-body">
+                    <div class="empty-state">No participants yet.</div>
+                </div>
+            </div>
+
+            <!-- Bracket Visualization -->
+            <div class="bracket-section" id="bracket-section" style="display:none;">
+                <h3>Bracket</h3>
+                <div class="bracket" id="bracket-container"></div>
+            </div>
+
+            <!-- Live Feed -->
+            <div class="live-feed" id="live-feed-section" style="display:none;">
+                <h3><span class="live-dot-header"></span> Live Feed</h3>
+                <div class="feed-log" id="feed-log">
+                    <div class="event-line" style="color:var(--text-muted);">Waiting for events...</div>
+                </div>
+                <div class="ws-status" id="ws-status">Connecting...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ── State ──────────────────────────────────────── */
+
+        const token = localStorage.getItem("clawquake_token") || "";
+        let currentUser = null;
+        let myBots = [];
+        let tournamentData = null;
+        let ws = null;
+        let feedEvents = [];
+        const MAX_FEED = 10;
+
+        /* ── Helpers ────────────────────────────────────── */
+
+        function escapeHtml(text) {
+            const el = document.createElement("div");
+            el.textContent = text ?? "";
+            return el.innerHTML;
+        }
+
+        function authHeaders() {
+            const h = {};
+            if (token) h["Authorization"] = "Bearer " + token;
+            return h;
+        }
+
+        async function fetchJson(url, options = {}) {
+            const merged = {
+                ...options,
+                headers: { ...(options.headers || {}), ...authHeaders() },
+            };
+            const response = await fetch(url, merged);
+            let data = {};
+            try { data = await response.json(); } catch (_) {}
+            return { response, data };
+        }
+
+        function getTournamentId() {
+            // URL pattern: /tournament/{id} or /tournament-detail/{id}
+            const parts = window.location.pathname.split("/").filter(Boolean);
+            const last = parts[parts.length - 1];
+            // If the last segment is numeric, use it; otherwise check hash
+            const id = parseInt(last, 10);
+            if (!isNaN(id)) return id;
+            // Fallback: ?id= or #id
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("id")) return parseInt(params.get("id"), 10);
+            const hash = parseInt(window.location.hash.replace("#", ""), 10);
+            if (!isNaN(hash)) return hash;
+            return null;
+        }
+
+        function formatDate(isoStr) {
+            if (!isoStr) return "";
+            const d = new Date(isoStr);
+            return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+        }
+
+        function roundLabel(roundNum, totalRounds) {
+            if (totalRounds && roundNum === totalRounds) return "Final";
+            if (totalRounds && roundNum === totalRounds - 1) return "Semifinals";
+            if (totalRounds && roundNum === totalRounds - 2) return "Quarterfinals";
+            return "Round " + roundNum;
+        }
+
+        /* ── Data Loading ───────────────────────────────── */
+
+        async function loadCurrentUser() {
+            if (!token) { currentUser = null; return; }
+            const { response, data } = await fetchJson("/api/auth/me");
+            currentUser = response.ok ? data : null;
+        }
+
+        async function loadMyBots() {
+            if (!token) { myBots = []; return; }
+            const { response, data } = await fetchJson("/api/bots");
+            myBots = (response.ok && Array.isArray(data)) ? data : [];
+        }
+
+        async function loadTournament() {
+            const id = getTournamentId();
+            if (!id) {
+                showError("No tournament ID found in URL.");
+                return;
+            }
+
+            const { response, data } = await fetchJson(`/api/tournaments/${id}`);
+            if (!response.ok) {
+                showError(data.detail || "Failed to load tournament.");
+                return;
+            }
+
+            tournamentData = data;
+            document.title = `ClawQuake \u2014 ${data.info.name || "Tournament"}`;
+            render();
+        }
+
+        function showError(msg) {
+            document.getElementById("loading-state").style.display = "none";
+            document.getElementById("error-state").style.display = "block";
+            document.getElementById("error-state").textContent = msg;
+        }
+
+        /* ── Rendering ──────────────────────────────────── */
+
+        function render() {
+            const info = tournamentData.info;
+            const participants = tournamentData.participants || [];
+            const bracket = tournamentData.bracket || {};
+
+            document.getElementById("loading-state").style.display = "none";
+            document.getElementById("tournament-content").style.display = "grid";
+
+            renderHeader(info, participants);
+            renderRegisterSection(info, participants);
+            renderParticipantsTable(info, participants);
+            renderBracketSection(bracket);
+            renderLiveFeed(info);
+        }
+
+        function renderHeader(info, participants) {
+            // Name
+            document.getElementById("t-name").textContent = info.name || "Tournament";
+
+            // Description
+            const descEl = document.getElementById("t-desc");
+            if (info.description) {
+                descEl.textContent = info.description;
+                descEl.style.display = "block";
+            } else {
+                descEl.style.display = "none";
+            }
+
+            // Meta pills
+            const statusClass = info.status === "pending" ? "pending"
+                : info.status === "active" ? "active"
+                : "completed";
+            const statusLabel = info.status === "pending" ? "Open"
+                : info.status === "active" ? "In Progress"
+                : "Completed";
+
+            const creatorName = info.creator_name || info.created_by_username || ("User " + (info.created_by_user_id || "?"));
+            const created = info.created_at ? formatDate(info.created_at) : "";
+            const maxBots = info.max_participants || 8;
+
+            let metaHtml = `
+                <span class="status-badge ${statusClass}">${statusLabel}</span>
+                <span class="meta-pill creator">Created by ${escapeHtml(creatorName)}${created ? " &middot; " + escapeHtml(created) : ""}</span>
+                <span class="meta-pill">${participants.length} / ${maxBots} bots</span>
+                <span class="meta-pill">${escapeHtml(info.format === "single_elim" ? "Single Elimination" : (info.format || "Single Elimination"))}</span>
+            `;
+            document.getElementById("t-meta").innerHTML = metaHtml;
+
+            // Right side actions
+            const isOwner = currentUser && (currentUser.is_admin || currentUser.id === info.created_by_user_id);
+            let actionsHtml = "";
+
+            if (info.status === "pending" && isOwner) {
+                const canStart = participants.length >= 2;
+                actionsHtml += canStart
+                    ? `<button class="btn btn-primary" onclick="startTournament()" style="font-size:1rem;padding:0.7rem 1.8rem;">Start Tournament</button>`
+                    : `<button class="btn btn-primary" disabled style="font-size:1rem;padding:0.7rem 1.8rem;">Need 2+ bots</button>`;
+            }
+
+            if (info.status === "completed" && info.winner_name) {
+                actionsHtml += `<div class="champion-badge">${escapeHtml(info.winner_name)}</div>`;
+            }
+
+            actionsHtml += `<button class="btn btn-outline" onclick="refreshAll()">Refresh</button>`;
+            document.getElementById("t-actions").innerHTML = actionsHtml;
+        }
+
+        function renderRegisterSection(info, participants) {
+            const section = document.getElementById("register-section");
+
+            if (info.status !== "pending" || !currentUser) {
+                section.style.display = "none";
+                return;
+            }
+
+            section.style.display = "block";
+
+            // Populate bot dropdown
+            const select = document.getElementById("bot-select");
+            const registeredBotIds = new Set(participants.map(p => p.bot_id));
+
+            // Clear old options, keep placeholder
+            select.innerHTML = '<option value="" disabled selected>Select one of your bots</option>';
+            myBots.forEach(bot => {
+                const alreadyIn = registeredBotIds.has(bot.id);
+                const opt = document.createElement("option");
+                opt.value = bot.id;
+                opt.textContent = bot.name + " (ELO " + Math.round(bot.elo) + ")" + (alreadyIn ? " - already registered" : "");
+                if (alreadyIn) opt.disabled = true;
+                select.appendChild(opt);
+            });
+
+            if (!myBots.length) {
+                const opt = document.createElement("option");
+                opt.value = "";
+                opt.disabled = true;
+                opt.textContent = "No bots \u2014 create one in Manage Bots";
+                select.appendChild(opt);
+            }
+
+            // Participant chips
+            const chipsEl = document.getElementById("participant-chips");
+            if (participants.length) {
+                chipsEl.innerHTML = participants.map(p =>
+                    `<span class="p-chip">${escapeHtml(p.bot_name)} <span class="elo">ELO ${Math.round(p.elo || 1200)}</span> <span class="owner">- ${escapeHtml(p.owner_name || p.username || "unknown")}</span></span>`
+                ).join("");
+            } else {
+                chipsEl.innerHTML = '<span class="p-chip">No bots registered yet</span>';
+            }
+        }
+
+        function renderParticipantsTable(info, participants) {
+            const body = document.getElementById("participants-body");
+
+            if (!participants.length) {
+                body.innerHTML = '<div class="empty-state">No participants yet.</div>';
+                return;
+            }
+
+            const isStarted = info.status !== "pending";
+
+            let headerCells = "";
+            if (isStarted) headerCells += "<th>Seed</th>";
+            headerCells += "<th>Bot</th><th>Owner</th><th>ELO</th><th>Strategy</th>";
+            if (isStarted) headerCells += "<th>Status</th>";
+
+            let rows = participants.map((p, i) => {
+                let cells = "";
+                if (isStarted) cells += `<td>${p.seed || (i + 1)}</td>`;
+                cells += `<td style="font-weight:600;">${escapeHtml(p.bot_name)}</td>`;
+                cells += `<td>${escapeHtml(p.owner_name || p.username || "")}</td>`;
+                cells += `<td class="table-elo">${Math.round(p.elo || 1200)}</td>`;
+                cells += `<td class="table-strategy">${escapeHtml(p.strategy || "default")}</td>`;
+                if (isStarted) {
+                    const statusCls = p.eliminated ? "eliminated" : "active-player";
+                    const statusText = p.eliminated ? "Eliminated" : "Active";
+                    cells += `<td><span class="table-status ${statusCls}">${statusText}</span></td>`;
+                }
+                return `<tr>${cells}</tr>`;
+            }).join("");
+
+            body.innerHTML = `
+                <table class="participants-table">
+                    <thead><tr>${headerCells}</tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        /* ── Bracket ────────────────────────────────────── */
+
+        function renderBracketSection(bracket) {
+            const section = document.getElementById("bracket-section");
+            const container = document.getElementById("bracket-container");
+            const roundKeys = Object.keys(bracket).sort((a, b) => parseInt(a) - parseInt(b));
+
+            if (!roundKeys.length) {
+                section.style.display = "none";
+                return;
+            }
+
+            section.style.display = "block";
+            container.innerHTML = "";
+            const totalRounds = roundKeys.length;
+
+            roundKeys.forEach((rk, ri) => {
+                const matches = bracket[rk] || [];
+                const col = document.createElement("div");
+                col.className = "round-col";
+
+                const header = document.createElement("div");
+                header.className = "round-header";
+                header.textContent = roundLabel(parseInt(rk), totalRounds);
+                col.appendChild(header);
+
+                const matchesWrap = document.createElement("div");
+                matchesWrap.className = "round-matches";
+
+                matches.forEach(match => {
+                    const cell = document.createElement("div");
+                    cell.className = "match-cell";
+
+                    const card = document.createElement("div");
+                    card.className = "match-card";
+
+                    // Slot 1
+                    card.appendChild(makeSlot(match, match.p1, match.p1_name));
+                    // Slot 2
+                    card.appendChild(makeSlot(match, match.p2, match.p2_name));
+
+                    // Indicator row
+                    if (match.game_match_id) {
+                        const ind = document.createElement("div");
+                        ind.className = "match-indicator";
+                        ind.innerHTML = `<span>Match ${match.match_num}</span>` +
+                            (match.winner
+                                ? `<span class="played-tag">Played</span>`
+                                : `<span class="live-dot">Live</span>`);
+                        card.appendChild(ind);
+                    } else {
+                        const ind = document.createElement("div");
+                        ind.className = "match-indicator";
+                        ind.innerHTML = `<span>Match ${match.match_num}</span><span></span>`;
+                        card.appendChild(ind);
+                    }
+
+                    cell.appendChild(card);
+                    matchesWrap.appendChild(cell);
+                });
+
+                col.appendChild(matchesWrap);
+                container.appendChild(col);
+            });
+        }
+
+        function makeSlot(match, playerId, playerName) {
+            const slot = document.createElement("div");
+            slot.className = "match-slot";
+
+            if (!playerId && !playerName) {
+                // TBD or BYE
+                slot.classList.add("tbd");
+                slot.innerHTML = '<span class="bot-name">TBD</span><span></span>';
+            } else if (playerName && playerName.toUpperCase() === "BYE") {
+                slot.classList.add("bye");
+                slot.innerHTML = '<span class="bot-name">BYE</span><span></span>';
+            } else {
+                const isWinner = match.winner && match.winner === playerId;
+                const isLoser = match.winner && match.winner !== playerId;
+
+                if (isWinner) slot.classList.add("winner");
+                if (isLoser) slot.classList.add("loser");
+
+                slot.innerHTML = `<span class="bot-name">${escapeHtml(playerName || "Bot " + playerId)}</span>` +
+                    (isWinner ? '<span class="win-marker">W</span>' : '<span></span>');
+            }
+
+            return slot;
+        }
+
+        /* ── Live Feed / WebSocket ──────────────────────── */
+
+        function renderLiveFeed(info) {
+            const section = document.getElementById("live-feed-section");
+            if (info.status !== "active") {
+                section.style.display = "none";
+                disconnectWs();
+                return;
+            }
+
+            section.style.display = "block";
+            connectWs();
+        }
+
+        function connectWs() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+                return;
+            }
+
+            const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const wsUrl = `${proto}//${window.location.host}/ws/events`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+            } catch (e) {
+                setWsStatus("Failed to connect");
+                return;
+            }
+
+            ws.onopen = () => setWsStatus("Connected", true);
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleWsEvent(msg);
+                } catch (_) {}
+            };
+
+            ws.onclose = () => {
+                setWsStatus("Disconnected. Reconnecting...");
+                setTimeout(() => {
+                    if (tournamentData && tournamentData.info.status === "active") {
+                        connectWs();
+                    }
+                }, 3000);
+            };
+
+            ws.onerror = () => setWsStatus("Connection error");
+        }
+
+        function disconnectWs() {
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function setWsStatus(text, connected = false) {
+            const el = document.getElementById("ws-status");
+            el.textContent = text;
+            el.className = connected ? "ws-status connected" : "ws-status";
+        }
+
+        function handleWsEvent(msg) {
+            const tournamentId = getTournamentId();
+            // Filter to events relevant to this tournament
+            if (msg.tournament_id && msg.tournament_id !== tournamentId) return;
+
+            const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            let line = "";
+            let cls = "";
+
+            switch (msg.type || msg.event) {
+                case "tournament_match_started":
+                case "match_started":
+                    cls = "event-match";
+                    line = `Match started: ${msg.p1_name || "?"} vs ${msg.p2_name || "?"}`;
+                    break;
+                case "tournament_match_ended":
+                case "match_ended":
+                    cls = "event-advance";
+                    line = `${msg.winner_name || "Winner"} wins${msg.round ? " Round " + msg.round : ""}${msg.match_num ? " Match " + msg.match_num : ""}`;
+                    // Refresh bracket data
+                    loadTournament();
+                    break;
+                case "tournament_completed":
+                    cls = "event-complete";
+                    line = `Tournament complete! Champion: ${msg.winner_name || "?"}`;
+                    loadTournament();
+                    break;
+                default:
+                    cls = "";
+                    line = msg.message || msg.type || JSON.stringify(msg);
+            }
+
+            feedEvents.push({ time: now, line, cls });
+            if (feedEvents.length > MAX_FEED) feedEvents.shift();
+
+            const log = document.getElementById("feed-log");
+            log.innerHTML = feedEvents.map(e =>
+                `<div class="event-line"><span class="event-time">${escapeHtml(e.time)}</span><span class="${e.cls}">${escapeHtml(e.line)}</span></div>`
+            ).join("");
+            log.scrollTop = log.scrollHeight;
+        }
+
+        /* ── Actions ────────────────────────────────────── */
+
+        async function registerBot() {
+            const select = document.getElementById("bot-select");
+            const botId = parseInt(select.value, 10);
+            const errEl = document.getElementById("register-error");
+            errEl.textContent = "";
+
+            if (!botId) {
+                errEl.textContent = "Select a bot first.";
+                return;
+            }
+
+            const id = getTournamentId();
+            const { response, data } = await fetchJson(`/api/tournaments/${id}/join`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bot_id: botId }),
+            });
+
+            if (!response.ok) {
+                errEl.textContent = data.detail || "Could not register bot.";
+                return;
+            }
+
+            await loadTournament();
+        }
+
+        async function startTournament() {
+            const id = getTournamentId();
+            const { response, data } = await fetchJson(`/api/tournaments/${id}/start`, {
+                method: "POST",
+            });
+
+            if (!response.ok) {
+                alert(data.detail || "Could not start tournament.");
+                return;
+            }
+
+            await loadTournament();
+        }
+
+        async function refreshAll() {
+            await loadTournament();
+        }
+
+        /* ── Init ───────────────────────────────────────── */
+
+        async function init() {
+            await loadCurrentUser();
+            await loadMyBots();
+            await loadTournament();
+
+            // Poll every 8s while active
+            setInterval(() => {
+                if (tournamentData && tournamentData.info.status === "active") {
+                    loadTournament();
+                }
+            }, 8000);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
