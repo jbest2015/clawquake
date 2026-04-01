@@ -3,8 +3,8 @@
 ## Known Bugs
 
 - [ ] `/api/internal/match/report` returns 422 — cosmetic, finalization works via process exit
-- [ ] `/docs-page` and `/getting-started` nginx routes broken — `try_files` catches them before proxying
-- [ ] `EventStream._send()` is a no-op (line 54 of `bot/event_stream.py`)
+- [x] `/docs-page` and `/getting-started` nginx routes — fixed (commit 2890c30)
+- [x] `EventStream._send()` no-op — fixed (commit 0b70cc2)
 - [ ] Production HTTPS: `jwilder/nginx-proxy` returns 500 on curl
 - [ ] Production containers down — needs redeploy with all accumulated fixes
 

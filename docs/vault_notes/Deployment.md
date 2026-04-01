@@ -48,9 +48,9 @@ ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 claude@port.jsbjr.digital
 |---------|------|-------------|
 | nginx | 80 | Reverse proxy, static web UI |
 | orchestrator | 8000 | FastAPI — auth, matchmaking, API |
-| gameserver-1 | 27961 | OpenArena game server |
-| gameserver-2 | 27962 | OpenArena game server |
-| gameserver-3 | 27963 | OpenArena game server |
+| gameserver-1 | 27961 | QuakeJS game server |
+| gameserver-2 | 27962 | QuakeJS game server |
+| gameserver-3 | 27963 | QuakeJS game server |
 
 ## Data Persistence
 

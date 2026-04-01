@@ -2,12 +2,16 @@
 
 ## Execution History
 
-### 2025-02-09 — Session 5+6: Bug fixes and debug instrumentation
+### 2026-02 to 2026-03 — Post-session fixes and improvements
+- **Status**: Multiple fixes landed
+- **Notes**: EventStream no-op fixed (0b70cc2). Zero-damage hit registration fixed (26975ac). Native lead aiming for Anti-Gravity (d9795f8). CLAUDE.md updated with undocumented components (PR #1). gstack integration added.
+
+### 2026-02-09 — Session 5+6: Bug fixes and debug instrumentation
 - **Command**: `docker compose up --build -d`
 - **Status**: Success (local)
 - **Notes**: Fixed strategy loader, subprocess logging, entity crashes. All 175 tests passing. Production NOT deployed.
 
-### 2025-02-08 — Sessions 1-4: Initial build and protocol debugging
+### 2026-02-08 — Sessions 1-4: Initial build and protocol debugging
 - **Command**: `docker compose up --build`
 - **Status**: Success after multiple protocol fixes
 - **Notes**: Built full stack from scratch. Major work on Protocol 71 client — fixed Huffman, fragment reassembly, delta compression, gamestate parsing. Matchmaker, dashboard, and spectator all brought online.

@@ -3,10 +3,8 @@
 ## Current Tasks (Active)
 
 - [ ] Redeploy production with all accumulated fixes (containers currently DOWN)
-- [ ] Commit uncommitted files (dashboard.html, spectate.html, entrypoint.sh, CLAUDE_REFERENCE.md)
 - [ ] Fix `/api/internal/match/report` 422 response
-- [ ] Fix nginx routes for `/docs-page` and `/getting-started`
-- [ ] Fix `EventStream._send()` no-op in `bot/event_stream.py`
+- [ ] Investigate and fix hanging test suite
 
 ## Future Tasks (Backlog)
 
@@ -43,3 +41,9 @@
 - [x] Fix gamestate loading (signed sequence, snap_flags, entity deltas)
 - [x] Fix fragment reassembly
 - [x] Rewrite snapshot.py for correct delta formats
+- [x] Fix nginx routes for `/docs-page` and `/getting-started` (commit 2890c30)
+- [x] Fix `EventStream._send()` no-op (commit 0b70cc2)
+- [x] Fix zero-damage hit registration (commit 26975ac)
+- [x] Implement native lead aiming and velocity prediction (commit d9795f8)
+- [x] Update CLAUDE.md with undocumented components and gotchas (PR #1)
+- [x] Commit all uncommitted files

@@ -1,7 +1,7 @@
 ---
 name: ClawQuake
 status: active
-repo: https://github.com/openclaw/clawquake
+repo: https://github.com/jbest2015/clawquake
 prod_url: https://clawquake.johnbest.ai
 tags: [project, code, ai, gaming]
 ---
@@ -12,10 +12,10 @@ AI Agent Combat Arena — autonomous bots compete against each other in Quake 3 
 
 ## Links
 
-- Repo: [openclaw/clawquake](https://github.com/openclaw/clawquake)
+- Repo: [jbest2015/clawquake](https://github.com/jbest2015/clawquake)
 - Production: [clawquake.johnbest.ai](https://clawquake.johnbest.ai)
 - Alt domain: [port.jsbjr.digital](https://port.jsbjr.digital)
-- Local path: `/Users/johnbest/src/openclaw/clawquake`
+- Local path: (clone from GitHub)
 
 ## Development Model
 

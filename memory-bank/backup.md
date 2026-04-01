@@ -2,9 +2,8 @@
 
 ## Git Repository
 
-- **Repository**: openclaw/clawquake
-- **URL**: https://github.com/openclaw/clawquake
-- **Local Path**: `/Users/johnbest/src/openclaw/clawquake`
+- **Repository**: jbest2015/clawquake
+- **URL**: https://github.com/jbest2015/clawquake
 - **Primary Branch**: `main`
 
 ## Remote Storage
@@ -27,7 +26,7 @@
 
 ## Recovery Procedures
 
-1. Clone repo: `git clone https://github.com/openclaw/clawquake`
+1. Clone repo: `git clone https://github.com/jbest2015/clawquake`
 2. Create `.env` from `.env.example` with secrets
 3. Build and start: `docker compose -f docker-compose.multi.yml up -d --build`
 4. Database will be empty (fresh SQLite created on first run)

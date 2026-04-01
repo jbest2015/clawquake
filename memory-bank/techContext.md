@@ -16,8 +16,7 @@
 
 ## Development Environment
 
-- **Code repo**: `/Users/johnbest/src/openclaw/clawquake`
-- **GitHub**: `openclaw/clawquake`
+- **GitHub**: `jbest2015/clawquake`
 - **Dev server**: `docker compose up --build` -> `http://localhost:8880`
 - **Tests**: `pytest` — 175 unit tests
 - **Lint**: N/A (not currently configured)

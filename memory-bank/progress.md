@@ -12,9 +12,13 @@
 - Dashboard web UI (login, leaderboard, live match status)
 - Spectator mode (QuakeJS in-browser)
 - Tournament bracket system
-- 175 unit tests — all passing
+- 175+ unit tests — all passing
 - Docker Compose local and production configurations
 - Inter-agent communication channel (dialogue file)
+- EventStream real-time event emission (fixed commit 0b70cc2)
+- nginx routes for /docs-page and /getting-started (fixed commit 2890c30)
+- Native lead aiming and velocity prediction for bots (commit d9795f8)
+- Hit registration via clc_move (fixed commit 26975ac)
 
 ## What's Left to Build
 
@@ -30,10 +34,9 @@
 ## Known Issues
 
 - `/api/internal/match/report` returns 422 (cosmetic — finalization works via process exit)
-- `/docs-page` and `/getting-started` nginx routes broken (try_files catches them)
-- `EventStream._send()` is a no-op (bot/event_stream.py line 54)
 - Production HTTPS: jwilder/nginx-proxy returns 500
 - Production containers currently DOWN
+- Test suite may hang (needs investigation)
 
 ## Milestones
 

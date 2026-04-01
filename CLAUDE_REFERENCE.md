@@ -9,7 +9,7 @@
 
 ClawQuake is an AI bot competition platform built on Quake 3 (QuakeJS). AI agents write strategy files, register bots via API, queue for matches, and the matchmaker automatically pairs them and runs matches on QuakeJS game servers.
 
-- **Repo**: `/Users/johnbest/src/openclaw/clawquake` (GitHub: `jbest2015/clawquake.git`)
+- **Repo**: GitHub `jbest2015/clawquake`
 - **3-agent workflow**: Claude (infra/orchestration), Codex (API/SDK), Anti-Gravity (game/UI)
 - **4 batches completed**: 175/175 tests passing
 - **Communication**: Agents coordinate via `communication/dialogue` file (append-only log)
@@ -57,8 +57,12 @@ ClawQuake is an AI bot competition platform built on Quake 3 (QuakeJS). AI agent
 
 ### What's Partially Working
 - **`/api/internal/match/report`** returns 422 — payload format mismatch. Match finalization works via process exit detection, so cosmetic but should be fixed.
-- **EventStream** (`bot/event_stream.py`) — `_send()` is a no-op (line 54). `_send_sync()` works.
-- **`/docs-page` and `/getting-started` routes** — nginx `try_files` catches these and returns the login page. Need explicit `location =` blocks.
+
+### Recently Fixed
+- **EventStream** (`bot/event_stream.py`) — `_send()` no-op fixed (commit 0b70cc2). Both `_send()` and `_send_sync()` now work.
+- **`/docs-page` and `/getting-started` routes** — nginx routing fixed (commit 2890c30).
+- **Zero-damage hit registration** — fixed by switching to clc_move (commit 26975ac).
+- **Native lead aiming** — velocity prediction implemented for Anti-Gravity bot (commit d9795f8).
 
 ### Production Server Status
 - **SHUT DOWN** as of this session end. All 5 ClawQuake containers brought down intentionally.
@@ -80,12 +84,16 @@ M  web/docs.html
 
 ### Recent Commits (latest first)
 ```
+de90456 Append AECH1 test proposal to dialogue log
+0b70cc2 Fix event_stream no-op and implement the Live Agent Control sync loop
+d9795f8 Implement native lead aiming and velocity prediction for Anti-Gravity bot
+26975ac Fix zero-damage hit registration bug by switching to clc_move
+560418d Merge pull request #1 from jbest2015/cilleyperson/update-claude-md
+ca763c4 Update CLAUDE.md with undocumented components and gotchas
+a0366f0 feat: gstack integration
+a71c906 Session 5+6: fix strategy loader, subprocess logging, entity crashes
 b72452e Post final clean-run queue status for Claude/user
 1845df1 Fix protocol-71 bot spawn path (pure mode/begin handling)
-398963e Log Codex queued on fresh DB for controlled restart
-d50d413 Update dialogue: Anti-Gravity paused, 3-player coordination
-9256864 Post reset directive for all agents to withdraw queue
-a72a24b + 96a2da4 Codex: streaming fixes, dashboard QuakeJS spectator default
 ```
 
 ## 4. Bugs Fixed (All Sessions)
@@ -172,8 +180,8 @@ a72a24b + 96a2da4 Codex: streaming fixes, dashboard QuakeJS spectator default
 | `web/spectate.html` | `/spectate.html` | Live spectator page (direct QuakeJS) |
 | `web/tournament.html` | `/tournament.html` | Tournament bracket visualization |
 | `web/replays.html` | `/replays.html` | Replay viewer with timeline |
-| `web/docs.html` | `/docs-page` (**BROKEN** — nginx route) | API documentation |
-| `web/getting-started.html` | `/getting-started` (**BROKEN** — nginx route) | Tutorial guide |
+| `web/docs.html` | `/docs-page` | API documentation |
+| `web/getting-started.html` | `/getting-started` | Tutorial guide |
 
 ### Docker / Deployment
 | File | Purpose |
@@ -283,8 +291,8 @@ In Docker, `GAME_SERVER_HOST=gameserver-1` ensures the URL resolves to `ws://gam
 ## 8. Production Server (Aech)
 
 - **Host**: port.jsbjr.digital (also clawquake.johnbest.ai, IP: 64.111.21.67)
-- **SSH (claude user)**: `ssh -o IdentitiesOnly=yes -i /Users/johnbest/.ssh/id_ed25519 claude@port.jsbjr.digital`
-- **SSH (jbest2007)**: `ssh -o IdentitiesOnly=yes -i /Users/johnbest/.ssh/JB_aech_priv.cer jbest2007@port.jsbjr.digital`
+- **SSH (claude user)**: `ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 claude@port.jsbjr.digital`
+- **SSH (jbest2007)**: `ssh -o IdentitiesOnly=yes -i ~/.ssh/JB_aech_priv.cer jbest2007@port.jsbjr.digital`
 - **Architecture**: x86_64 (game servers work here, unlike ARM64 Mac)
 - **Docker**: v20.10.21, use `docker-compose` (hyphenated) NOT `docker compose`, may need sudo
 - **docker-compose version**: v2.20.3
@@ -301,11 +309,11 @@ In Docker, `GAME_SERVER_HOST=gameserver-1` ensures the URL resolves to `ws://gam
 ### Production Redeploy Steps
 ```bash
 # 1. Commit & push local changes
-cd /Users/johnbest/src/openclaw/clawquake
+cd ~/clawquake  # or wherever the repo is cloned
 git add -A && git commit -m "..." && git push
 
 # 2. SSH to server
-ssh -o IdentitiesOnly=yes -i /Users/johnbest/.ssh/id_ed25519 claude@port.jsbjr.digital
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 claude@port.jsbjr.digital
 
 # 3. Pull latest
 cd ~/clawquake && git pull
@@ -327,9 +335,13 @@ sudo docker-compose -f docker-compose.multi.yml logs -f orchestrator
 
 ### Issues to Fix
 1. **`/api/internal/match/report` 422 error** — payload format mismatch between agent_runner's ResultReporter and the endpoint schema. Match finalization works via process exit detection, but per-bot kills/deaths aren't recorded.
-2. **`/docs-page` and `/getting-started` nginx routes** — `try_files` catches them. Need `location = /docs-page { ... }` blocks in nginx.conf.
-3. **EventStream `_send()` method** has `pass` instead of actual HTTP send at line 54 of `bot/event_stream.py`.
-4. **Production redeploy** — containers are down, need commit + push + rebuild with all fixes.
+2. **Production redeploy** — containers are down, need push + rebuild with all fixes.
+
+### Issues Fixed (since session 5)
+- **nginx routes** for `/docs-page` and `/getting-started` — fixed (commit 2890c30)
+- **EventStream `_send()`** no-op — fixed, now sends HTTP POST (commit 0b70cc2)
+- **Zero-damage hit registration** — fixed by switching to clc_move (commit 26975ac)
+- **Lead aiming** — native velocity prediction for Anti-Gravity bot (commit d9795f8)
 
 ### Feature Backlog (from FEATURE_TODO.md)
 1. Human player naming in-game (replace `UnnamedPlayer` with login username)
@@ -347,7 +359,7 @@ sudo docker-compose -f docker-compose.multi.yml logs -f orchestrator
 
 ### Running Tests
 ```bash
-cd /Users/johnbest/src/openclaw/clawquake
+cd ~/clawquake  # or wherever the repo is cloned
 pytest tests/ -v  # All 175 tests
 ```
 
@@ -419,6 +431,7 @@ docker logs -f clawquake-orchestrator
 3. **Session 3**: Production deployment — switched game servers from OpenArena to QuakeJS, deployed to Hetzner server.
 4. **Session 4** (Feb 8 ~9:30pm): Fixed matchmaker startup, AGENT_RUNNER_PATH, GAME_SERVER_HOST. Ran successful end-to-end match locally (AlphaBot vs BetaBot, return_code=0, winner determined, ELO calculated).
 5. **Session 5** (Feb 9 ~12:00am): Codex fixed streaming (dashboard defaults to direct QuakeJS spectator iframe, HLS opt-in). Codex fixed protocol 71 bot spawn regression (sv_pure 0 + skip legacy begin). Ran multiple live matches (ClaudeMatch1 vs CodexMatch1). **Production shut down** intentionally for clean redeploy. Codex added FEATURE_TODO.md with backlog. Anti-Gravity offline for latter half of session.
+6. **Post-session work** (Feb-Mar 2026): CLAUDE.md updated with undocumented components and gotchas (PR #1). Zero-damage hit registration fixed (clc_move). Native lead aiming and velocity prediction for Anti-Gravity bot. EventStream no-op fixed. gstack integration added.
 
 ## 12. Lessons Learned
 
