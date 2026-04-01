@@ -124,27 +124,6 @@ def list_strategies(
     }
 
 
-@router.get("/api/strategies/{name}")
-def get_strategy_source(
-    name: str,
-    user: UserDB = Depends(get_current_user_or_apikey),
-):
-    """Download the source code of a strategy."""
-    # Check custom first
-    custom_path = _custom_strategy_path(user.id, name)
-    if os.path.exists(custom_path):
-        with open(custom_path, "r") as f:
-            return {"name": name, "source": f.read(), "type": "custom"}
-
-    # Check global
-    global_path = os.path.join(STRATEGIES_DIR, f"{name}.py")
-    if os.path.exists(global_path):
-        with open(global_path, "r") as f:
-            return {"name": name, "source": f.read(), "type": "global"}
-
-    raise HTTPException(status_code=404, detail=f"Strategy '{name}' not found")
-
-
 class StrategyUpload(BaseModel):
     source: str
 
@@ -217,6 +196,27 @@ def list_custom_strategies(
         size = os.path.getsize(path) if os.path.exists(path) else 0
         result.append({"name": name, "assign_as": f"custom:{name}", "size_bytes": size})
     return {"custom_strategies": result}
+
+
+@router.get("/api/strategies/{name}")
+def get_strategy_source(
+    name: str,
+    user: UserDB = Depends(get_current_user_or_apikey),
+):
+    """Download the source code of a strategy."""
+    # Check custom first
+    custom_path = _custom_strategy_path(user.id, name)
+    if os.path.exists(custom_path):
+        with open(custom_path, "r") as f:
+            return {"name": name, "source": f.read(), "type": "custom"}
+
+    # Check global
+    global_path = os.path.join(STRATEGIES_DIR, f"{name}.py")
+    if os.path.exists(global_path):
+        with open(global_path, "r") as f:
+            return {"name": name, "source": f.read(), "type": "global"}
+
+    raise HTTPException(status_code=404, detail=f"Strategy '{name}' not found")
 
 
 @router.post("/api/bots", response_model=BotResponse)
