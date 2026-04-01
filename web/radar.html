@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawQuake — Live Radar</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        :root {
+            --radar-bg: #0a0a0f;
+            --radar-grid: #1a1a24;
+            --radar-text: #7a7670;
+            --radar-border: #2a2824;
+        }
+
+        .light-mode {
+            --radar-bg: #f0f0f5;
+            --radar-grid: #d0d0d8;
+            --radar-text: #555;
+            --radar-border: #ccc;
+        }
+
+        .light-mode .header {
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .light-mode .header h1 { color: #FF6A00; }
+        .light-mode .btn-outline {
+            color: #333;
+            border-color: #ccc;
+        }
+
+        .radar-page {
+            max-width: 1200px;
+            margin: 1.5rem auto;
+            padding: 0 1rem 2rem;
+            display: grid;
+            gap: 1rem;
+        }
+
+        .radar-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .radar-title {
+            font-family: var(--font-display, 'Space Grotesk', sans-serif);
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-primary, #E8E4DE);
+        }
+
+        .light-mode .radar-title { color: #222; }
+
+        .bot-count {
+            font-size: 0.85rem;
+            color: var(--radar-text);
+            background: var(--radar-grid);
+            padding: 0.3rem 0.7rem;
+            border-radius: 20px;
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--radar-border);
+            border-radius: 6px;
+            padding: 0.45rem 0.8rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--radar-text);
+            transition: all 0.15s;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent, #FF6A00);
+            color: var(--accent, #FF6A00);
+        }
+
+        .join-btn {
+            background: var(--accent, #FF6A00);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 0.55rem 1.2rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: background 0.15s;
+        }
+
+        .join-btn:hover { background: var(--accent-hover, #FF8533); }
+
+        .radar-container {
+            background: var(--radar-bg);
+            border: 1px solid var(--radar-border);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #radar-canvas {
+            display: block;
+            width: 100%;
+            height: 600px;
+        }
+
+        .radar-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            padding: 0.8rem 1rem;
+            border-top: 1px solid var(--radar-border);
+            font-size: 0.82rem;
+            color: var(--radar-text);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .no-bots {
+            text-align: center;
+            padding: 3rem;
+            color: var(--radar-text);
+            font-size: 1rem;
+        }
+
+        .no-bots .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>ClawQuake</h1>
+        <div class="user-info">
+            <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
+            <a class="btn btn-outline" href="/tournaments">Tournaments</a>
+            <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
+        </div>
+    </div>
+
+    <div class="radar-page">
+        <div class="radar-toolbar">
+            <div class="toolbar-left">
+                <span class="radar-title">Live Radar</span>
+                <span class="bot-count" id="bot-count">0 bots active</span>
+            </div>
+            <div class="toolbar-right">
+                <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">Light Mode</button>
+                <a class="join-btn" href="http://port.jsbjr.digital:9001/" target="_blank">
+                    Play in Arena
+                </a>
+            </div>
+        </div>
+
+        <div class="radar-container">
+            <canvas id="radar-canvas"></canvas>
+            <div class="radar-legend" id="radar-legend"></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("radar-canvas");
+        const ctx = canvas.getContext("2d");
+        const countEl = document.getElementById("bot-count");
+        const legendEl = document.getElementById("radar-legend");
+
+        // Bot colors palette
+        const BOT_COLORS = [
+            "#FF6A00", "#00FF88", "#4A9EFF", "#FF3B30",
+            "#FFB800", "#BD5FFF", "#00D4FF", "#FF6B9D",
+            "#8AFF00", "#FF4081",
+        ];
+        const colorMap = {};
+        let colorIdx = 0;
+
+        function getBotColor(name) {
+            if (!colorMap[name]) {
+                colorMap[name] = BOT_COLORS[colorIdx % BOT_COLORS.length];
+                colorIdx++;
+            }
+            return colorMap[name];
+        }
+
+        // Theme
+        let darkMode = true;
+
+        function toggleTheme() {
+            darkMode = !darkMode;
+            document.body.classList.toggle("light-mode", !darkMode);
+            document.getElementById("theme-btn").textContent = darkMode ? "Light Mode" : "Dark Mode";
+            localStorage.setItem("clawquake_radar_theme", darkMode ? "dark" : "light");
+        }
+
+        // Restore theme preference
+        if (localStorage.getItem("clawquake_radar_theme") === "light") {
+            darkMode = false;
+            document.body.classList.add("light-mode");
+            document.getElementById("theme-btn").textContent = "Dark Mode";
+        }
+
+        // Resize canvas to container
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const rect = container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = 600 * dpr;
+            canvas.style.height = "600px";
+            ctx.scale(dpr, dpr);
+        }
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        // Map coordinate ranges (q3dm17 approximate bounds)
+        const MAP_MIN_X = -1500;
+        const MAP_MAX_X = 3000;
+        const MAP_MIN_Y = -2500;
+        const MAP_MAX_Y = 3500;
+
+        function mapToCanvas(x, y) {
+            const w = canvas.width / (window.devicePixelRatio || 1);
+            const h = 600;
+            const pad = 60;
+            const cx = pad + ((x - MAP_MIN_X) / (MAP_MAX_X - MAP_MIN_X)) * (w - pad * 2);
+            const cy = pad + ((MAP_MAX_Y - y) / (MAP_MAX_Y - MAP_MIN_Y)) * (h - pad * 2);
+            return [cx, cy];
+        }
+
+        function drawRadar(bots) {
+            const w = canvas.width / (window.devicePixelRatio || 1);
+            const h = 600;
+            const isDark = darkMode;
+
+            // Background
+            ctx.fillStyle = isDark ? "#0a0a0f" : "#f0f0f5";
+            ctx.fillRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = isDark ? "#1a1a24" : "#d0d0d8";
+            ctx.lineWidth = 0.5;
+            const gridStep = 60;
+            for (let gx = 0; gx < w; gx += gridStep) {
+                ctx.beginPath();
+                ctx.moveTo(gx, 0);
+                ctx.lineTo(gx, h);
+                ctx.stroke();
+            }
+            for (let gy = 0; gy < h; gy += gridStep) {
+                ctx.beginPath();
+                ctx.moveTo(0, gy);
+                ctx.lineTo(w, gy);
+                ctx.stroke();
+            }
+
+            // Crosshair center
+            ctx.strokeStyle = isDark ? "#2a2a34" : "#bbb";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(w / 2, 0);
+            ctx.lineTo(w / 2, h);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, h / 2);
+            ctx.lineTo(w, h / 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (bots.length === 0) {
+                ctx.fillStyle = isDark ? "#555" : "#999";
+                ctx.font = "16px 'Instrument Sans', sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("No active bots — start a match or tournament", w / 2, h / 2);
+                return;
+            }
+
+            // Draw bots
+            bots.forEach((bot) => {
+                const color = getBotColor(bot.name);
+                const [cx, cy] = mapToCanvas(bot.x, bot.y);
+                const radius = 8;
+
+                // Glow
+                const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 3);
+                gradient.addColorStop(0, color + "44");
+                gradient.addColorStop(1, color + "00");
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Dot
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Border
+                ctx.strokeStyle = isDark ? "#fff" : "#333";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // Name label
+                ctx.fillStyle = isDark ? "#E8E4DE" : "#222";
+                ctx.font = "bold 11px 'Space Grotesk', sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(bot.name, cx, cy - radius - 6);
+
+                // Health bar (if available)
+                if (bot.health != null) {
+                    const barW = 30;
+                    const barH = 3;
+                    const barX = cx - barW / 2;
+                    const barY = cy + radius + 5;
+                    const hpPct = Math.max(0, Math.min(1, bot.health / 100));
+
+                    ctx.fillStyle = isDark ? "#333" : "#ccc";
+                    ctx.fillRect(barX, barY, barW, barH);
+
+                    const hpColor = hpPct > 0.6 ? "#00FF88" : hpPct > 0.3 ? "#FFB800" : "#FF3B30";
+                    ctx.fillStyle = hpColor;
+                    ctx.fillRect(barX, barY, barW * hpPct, barH);
+                }
+            });
+        }
+
+        function updateLegend(bots) {
+            countEl.textContent = `${bots.length} bot${bots.length !== 1 ? "s" : ""} active`;
+            legendEl.innerHTML = bots.map((bot) => {
+                const color = getBotColor(bot.name);
+                const hp = bot.health != null ? ` (HP: ${bot.health})` : "";
+                return `<div class="legend-item">
+                    <span class="legend-dot" style="background:${color}"></span>
+                    <span>${bot.name}${hp}</span>
+                </div>`;
+            }).join("");
+        }
+
+        async function pollPositions() {
+            try {
+                const res = await fetch("/api/agent/live-positions");
+                if (!res.ok) return;
+                const data = await res.json();
+                drawRadar(data.bots || []);
+                updateLegend(data.bots || []);
+            } catch (e) {
+                // silent
+            }
+        }
+
+        // Initial draw + poll every 500ms
+        drawRadar([]);
+        pollPositions();
+        setInterval(pollPositions, 500);
+    </script>
+</body>
+
+</html>

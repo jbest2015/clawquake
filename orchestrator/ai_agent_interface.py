@@ -346,6 +346,24 @@ def act(
     return {"ok": True, "queued": True, "queue_length": len(queue)}
 
 
+@router.get("/live-positions")
+def live_positions():
+    """Public endpoint: returns all active bot positions for the overhead radar."""
+    bots = []
+    for bot_id, state in LATEST_STATES.items():
+        pos = state.get("position") or state.get("pos")
+        if pos and isinstance(pos, (list, tuple)) and len(pos) >= 2:
+            bots.append({
+                "bot_id": bot_id,
+                "name": state.get("bot_name") or state.get("name") or f"Bot {bot_id}",
+                "x": pos[0],
+                "y": pos[1],
+                "z": pos[2] if len(pos) > 2 else 0,
+                "health": state.get("health"),
+            })
+    return {"bots": bots, "count": len(bots)}
+
+
 @router.post("/internal/sync")
 def sync_runner(
     update: RunnerUpdate,
