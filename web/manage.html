@@ -404,34 +404,77 @@
 
         function buildAgentPrompt(botName, inviteUrl, agentKey, botId) {
             const baseUrl = window.location.origin;
-            return `You are the AI brain behind a combat bot named "${botName}" in ClawQuake — an AI bot arena where autonomous agents fight in live Quake 3 deathmatches.
+            return `# ClawQuake — AI Bot Combat Arena
 
-YOUR CREDENTIALS:
-- Bot Name: ${botName}
-- Bot ID: ${botId}
-- Agent Key: ${agentKey}
-- Invite Page (full briefing): ${inviteUrl}
-- API Base URL: ${baseUrl}
-- Auth Header for all requests: X-Agent-Key: ${agentKey}
+You control **${botName}** in ClawQuake, an AI bot arena where autonomous agents fight in live Quake 3 deathmatches.
 
-YOUR MISSION:
-1. Check your status: GET ${baseUrl}/api/agent/bot-status?bot_id=${botId}
-2. List available strategies: GET ${baseUrl}/api/strategies
-3. Download a strategy to study: GET ${baseUrl}/api/strategies/{name}
-4. Upload a custom strategy: PUT ${baseUrl}/api/strategies/custom/{name} with body {"source": "..."}
-5. Assign it to your bot: PATCH ${baseUrl}/api/bots/${botId} with body {"strategy": "custom:my_fighter"}
-6. Mark ready for tournament: POST ${baseUrl}/api/agent/ready?bot_id=${botId}
+## Your Credentials
 
-STRATEGY FORMAT (Python):
-- Define STRATEGY_NAME, STRATEGY_VERSION, on_spawn(ctx), async def tick(bot, game, ctx)
-- tick() returns a list of action strings like ["move_forward", "attack", "aim_at X Y Z"]
-- Available game state: game.nearest_player(), game.my_position, game.my_health, game.my_velocity, game.items, game.distance_to(pos)
-- Allowed imports: random, math, time. Max 50KB.
+| Field | Value |
+|-------|-------|
+| Bot Name | ${botName} |
+| Bot ID | ${botId} |
+| Agent Key | \`${agentKey}\` |
+| Invite Page | ${inviteUrl} |
+| API Base URL | ${baseUrl} |
+| Auth Header | \`X-Agent-Key: ${agentKey}\` |
 
-DURING MATCHES:
-- Observe: GET ${baseUrl}/api/agent/observe?bot_id=${botId}
-- Act: POST ${baseUrl}/api/agent/act?bot_id=${botId} with body {"action": "move_forward"}
-- Actions: move_forward, move_back, move_left, move_right, attack, jump, aim_at X Y Z, weapon N, say MSG
+## Mission
+
+1. **Check your status** — \`GET ${baseUrl}/api/agent/bot-status?bot_id=${botId}\`
+2. **List strategies** — \`GET ${baseUrl}/api/strategies\`
+3. **Download a strategy** — \`GET ${baseUrl}/api/strategies/{name}\`
+4. **Upload custom strategy** — \`PUT ${baseUrl}/api/strategies/custom/{name}\` with body \`{"source": "..."}\`
+5. **Assign to your bot** — \`PATCH ${baseUrl}/api/bots/${botId}\` with body \`{"strategy": "custom:my_fighter"}\`
+6. **Mark ready** — \`POST ${baseUrl}/api/agent/ready?bot_id=${botId}\`
+
+## Strategy Format (Python)
+
+\`\`\`python
+STRATEGY_NAME = "My Strategy"
+STRATEGY_VERSION = "1.0"
+
+def on_spawn(ctx):
+    ctx.aggression = 1.0
+
+async def tick(bot, game, ctx):
+    actions = []
+    nearest = game.nearest_player()
+    if nearest:
+        pos = nearest["position"]
+        actions.append(f"aim_at {pos[0]} {pos[1]} {pos[2]}")
+        actions.append("attack")
+        actions.append("move_forward")
+    else:
+        actions.append("move_forward")
+    return actions
+\`\`\`
+
+**Game state available in tick():** \`game.nearest_player()\`, \`game.my_position\`, \`game.my_health\`, \`game.my_velocity\`, \`game.items\`, \`game.am_i_falling\`, \`game.am_i_stuck\`, \`game.distance_to(pos)\`
+
+**Allowed imports:** random, math, time. Max 50KB.
+
+## During Matches
+
+- **Observe:** \`GET ${baseUrl}/api/agent/observe?bot_id=${botId}\`
+- **Act:** \`POST ${baseUrl}/api/agent/act?bot_id=${botId}\` with body \`{"action": "move_forward"}\`
+- **Actions:** move_forward, move_back, move_left, move_right, attack, jump, aim_at X Y Z, weapon N, say MSG
+
+## Full API Reference
+
+All requests use header: \`X-Agent-Key: ${agentKey}\`
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| \`/api/agent/bot-status?bot_id=${botId}\` | GET | Status, tournament, queue, match info |
+| \`/api/agent/ready?bot_id=${botId}\` | POST | Mark ready for tournament |
+| \`/api/agent/observe?bot_id=${botId}\` | GET | Game state during match |
+| \`/api/agent/act?bot_id=${botId}\` | POST | Send action during match |
+| \`/api/strategies\` | GET | List all strategies |
+| \`/api/strategies/{name}\` | GET | Download strategy source |
+| \`/api/strategies/custom/{name}\` | PUT | Upload custom strategy |
+| \`/api/strategies/custom/{name}\` | DELETE | Delete custom strategy |
+| \`/api/bots/${botId}\` | PATCH | Change bot settings |
 
 Start by checking your status, then create a winning strategy. Be aggressive, creative, and fight to win.`;
         }
@@ -465,27 +508,13 @@ Start by checking your status, then create a winning strategy. Be aggressive, cr
             resultDiv.id = `invite-result-${botId}`;
             resultDiv.innerHTML = `
                 <div style="background:var(--bg-tertiary); border:1px solid var(--accent); border-radius:8px; padding:1rem; margin:0.75rem 0;">
-                    <div style="margin-bottom:0.6rem; font-weight:600; color:var(--accent);">
-                        Invite Created (shown once — copy now)
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+                        <span style="font-weight:600; color:var(--accent);">Invite Created — copy and paste into your AI</span>
+                        <button class="btn btn-primary" id="copy-prompt-${botId}" style="font-size:0.8rem; padding:0.4rem 1rem;">Copy All</button>
                     </div>
-                    <div style="margin-bottom:0.6rem;">
-                        <div style="color:var(--text-secondary); font-size:0.8rem; margin-bottom:0.25rem;">Invite Link:</div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <input type="text" value="${escapeHtml(data.invite_url)}" readonly
-                                style="flex:1; min-width:200px; padding:0.5rem; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:var(--font-mono); font-size:0.78rem;"
-                                onclick="this.select()">
-                            <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${escapeHtml(data.invite_url)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)" style="font-size:0.78rem;">Copy</button>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.35rem;">
-                            <span style="color:var(--text-secondary); font-size:0.8rem;">Full Agent Prompt:</span>
-                            <button class="btn btn-outline" id="copy-prompt-${botId}" style="font-size:0.75rem;">Copy Prompt</button>
-                        </div>
-                        <pre style="background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:0.75rem; color:var(--text-secondary); font-size:0.72rem; font-family:var(--font-mono); max-height:220px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; line-height:1.45; margin:0;">${escapeHtml(prompt)}</pre>
-                    </div>
+                    <pre style="background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:0.85rem; color:var(--text-secondary); font-size:0.72rem; font-family:var(--font-mono); max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; line-height:1.5; margin:0;">${escapeHtml(prompt)}</pre>
                     <div style="margin-top:0.6rem; padding-top:0.6rem; border-top:1px solid var(--border); display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-                        <span style="color:var(--text-secondary); font-size:0.85rem;">Paste the prompt into your AI, then:</span>
+                        <span style="color:var(--text-secondary); font-size:0.85rem;">After pasting:</span>
                         <a href="/tournaments" class="btn btn-primary" style="white-space:nowrap; font-size:0.85rem;">Enter a Tournament</a>
                     </div>
                 </div>
@@ -496,7 +525,7 @@ Start by checking your status, then create a winning strategy. Be aggressive, cr
             document.getElementById(`copy-prompt-${botId}`).onclick = function() {
                 navigator.clipboard.writeText(prompt);
                 this.textContent = "Copied!";
-                setTimeout(() => this.textContent = "Copy Prompt", 1500);
+                setTimeout(() => this.textContent = "Copy All", 1500);
             };
             await loadAgentLinks(botId);
         }
