@@ -216,6 +216,7 @@ def bot_status(
                 "status": tournament.status,
                 "my_seed": tp.seed,
                 "eliminated": bool(tp.eliminated),
+                "ready": bool(getattr(tp, "ready", 0)),
                 "participants": t_count,
                 "current_round": tournament.current_round,
                 "next_opponent": next_opponent,
@@ -268,6 +269,44 @@ def bot_status(
             }
 
     return result
+
+
+@router.post("/ready")
+def mark_ready(
+    bot_id: int = Query(...),
+    ready: bool = Query(default=True),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_agent_key: Optional[str] = Header(default=None, alias="X-Agent-Key"),
+    db: Session = Depends(get_db),
+):
+    """AI agent signals that its bot is ready (or not ready) for tournament play."""
+    bot = _resolve_bot_access(db, bot_id, credentials, x_api_key, x_agent_key)
+
+    # Find active tournament participation
+    tp = (
+        db.query(TournamentParticipantDB)
+        .join(TournamentDB, TournamentDB.id == TournamentParticipantDB.tournament_id)
+        .filter(
+            TournamentParticipantDB.bot_id == bot_id,
+            TournamentDB.status == "pending",
+        )
+        .first()
+    )
+    if not tp:
+        raise HTTPException(status_code=404, detail="Bot is not in any pending tournament")
+
+    tp.ready = 1 if ready else 0
+    db.commit()
+
+    tournament = db.query(TournamentDB).filter(TournamentDB.id == tp.tournament_id).first()
+    return {
+        "bot_id": bot.id,
+        "bot_name": bot.name,
+        "tournament_id": tp.tournament_id,
+        "tournament_name": tournament.name if tournament else None,
+        "ready": bool(tp.ready),
+    }
 
 
 @router.post("/act")

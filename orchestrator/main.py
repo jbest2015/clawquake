@@ -215,6 +215,10 @@ async def _migrate_tournament_columns():
             db.execute(text("ALTER TABLE tournaments ADD COLUMN description TEXT DEFAULT ''"))
         if "max_participants" not in cols:
             db.execute(text("ALTER TABLE tournaments ADD COLUMN max_participants INTEGER DEFAULT 16"))
+        # Add ready column to tournament_participants
+        tp_cols = {row[1] for row in db.execute(text("PRAGMA table_info(tournament_participants)")).fetchall()}
+        if "ready" not in tp_cols:
+            db.execute(text("ALTER TABLE tournament_participants ADD COLUMN ready INTEGER DEFAULT 0"))
         db.commit()
     except Exception:
         pass
@@ -795,12 +799,35 @@ async def start_tournament(
     if not user.is_admin and tournament.created_by_user_id != user.id:
         raise HTTPException(status_code=403, detail="Tournament owner or admin required")
 
+    # Remove unready participants before starting (only if at least one bot used the ready system)
+    all_participants = db.query(TournamentParticipantDB).filter_by(tournament_id=tid).all()
+    any_ready = any(getattr(p, "ready", 0) for p in all_participants)
+
+    removed_names = []
+    if any_ready:
+        # At least one bot signaled ready — remove those that didn't
+        for p in all_participants:
+            if not getattr(p, "ready", 0):
+                bot = db.query(BotDB).filter(BotDB.id == p.bot_id).first()
+                removed_names.append(bot.name if bot else f"Bot {p.bot_id}")
+                db.delete(p)
+        if removed_names:
+            db.commit()
+
+    # Check we still have enough players
+    ready_count = db.query(TournamentParticipantDB).filter_by(tournament_id=tid).count()
+    if ready_count < 2:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough ready bots to start (need 2+, have {ready_count}). Removed unready: {removed_names}",
+        )
+
     system = TournamentBracket(db)
     ok = system.start_tournament(tid)
     if not ok:
         raise HTTPException(status_code=400, detail="Could not start (not enough players or already started)")
     _ensure_tournament_runner(tid)
-    return {"started": True}
+    return {"started": True, "participants": ready_count, "removed_unready": removed_names}
 
 @app.get("/api/tournaments/{tid}")
 def get_tournament(
@@ -870,6 +897,7 @@ def get_tournament(
                 "elo": bots_detail[participant.bot_id].elo if participant.bot_id in bots_detail else None,
                 "strategy": bots_detail[participant.bot_id].strategy if participant.bot_id in bots_detail else None,
                 "seed": participant.seed,
+                "ready": bool(getattr(participant, "ready", 0)),
                 "eliminated": bool(participant.eliminated),
             }
             for participant in participants

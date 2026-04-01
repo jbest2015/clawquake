@@ -286,6 +286,7 @@ class TournamentParticipantDB(Base):
     bot_id = Column(Integer, nullable=False) # FK bots.id
     seed = Column(Integer, nullable=True)
     eliminated = Column(Integer, default=0) # boolean
+    ready = Column(Integer, default=0) # boolean — AI has signaled ready
     rank = Column(Integer, nullable=True) # Final placement
 
 class TournamentMatchDB(Base):

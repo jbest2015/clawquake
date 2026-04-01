@@ -145,6 +145,7 @@ def connect_agent(
         "observe_url": f"{base_url}/api/agent/observe?bot_id={bot.id}",
         "act_url": f"{base_url}/api/agent/act?bot_id={bot.id}",
         "bot_status_url": f"{base_url}/api/agent/bot-status?bot_id={bot.id}",
+        "ready_url": f"{base_url}/api/agent/ready?bot_id={bot.id}",
         "stream_url": f"{base_url.replace('http://', 'ws://').replace('https://', 'wss://')}/api/agent/stream?bot_id={bot.id}&agent_key={agent_key}",
         "strategies_url": f"{base_url}/api/strategies",
     }
