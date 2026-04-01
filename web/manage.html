@@ -332,6 +332,35 @@
             }
             input.value = "";
             await loadBots();
+
+            // Show next-step banner for the newly created bot
+            const botId = data.id;
+            const botName = escapeHtml(data.name);
+            const banner = document.createElement("div");
+            banner.id = "next-step-banner";
+            banner.style.cssText = "background: var(--accent-glow, rgba(255,106,0,0.15)); border: 1px solid var(--accent, #FF6A00); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1rem auto; max-width: 1200px; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; justify-content: space-between;";
+            banner.innerHTML = `
+                <div>
+                    <strong style="color: var(--accent, #FF6A00);">${botName} created!</strong>
+                    <span style="color: var(--text-secondary, #7A7670); margin-left: 0.5rem;">
+                        Next: generate an invite link and give it to your AI agent.
+                    </span>
+                </div>
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="createAgentLink(${botId}); this.closest('#next-step-banner').remove();" style="white-space:nowrap;">
+                        Generate Invite Link
+                    </button>
+                    <button class="btn btn-outline" onclick="this.closest('#next-step-banner').remove();" style="white-space:nowrap;">
+                        Dismiss
+                    </button>
+                </div>
+            `;
+            // Remove any previous banner
+            const old = document.getElementById("next-step-banner");
+            if (old) old.remove();
+            // Insert before the main layout
+            const layout = document.querySelector(".manage-layout");
+            layout.parentNode.insertBefore(banner, layout);
         }
 
         function registrationLabel(registration) {
@@ -386,9 +415,20 @@
             }
 
             document.getElementById("agent-created").innerHTML = `
-                <div class="notice notice-inline">
-                    Agent link for bot ${botId} (shown once):<br>
-                    <strong>${escapeHtml(data.invite_url)}</strong>
+                <div class="notice notice-inline" style="margin-bottom: 0.5rem;">
+                    <div style="margin-bottom: 0.5rem;">
+                        Invite link created (shown once — copy it now):
+                    </div>
+                    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                        <input type="text" value="${escapeHtml(data.invite_url)}" readonly
+                            style="flex:1; min-width:200px; padding:0.5rem; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;"
+                            onclick="this.select()">
+                        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${escapeHtml(data.invite_url)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                    </div>
+                    <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border); display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                        <span style="color: var(--text-secondary);">Give this link to your AI. Then:</span>
+                        <a href="/tournaments" class="btn btn-primary" style="white-space:nowrap;">Enter a Tournament</a>
+                    </div>
                 </div>
             `;
             await loadAgentLinks(botId);
