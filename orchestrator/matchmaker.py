@@ -386,6 +386,21 @@ class MatchMaker:
             return default
 
         strategy_name = getattr(bot, "strategy", None) or "default"
+
+        # Custom strategies: "custom:my_fighter" → custom_strategies/{owner_id}_my_fighter.py
+        if strategy_name.startswith("custom:"):
+            custom_name = strategy_name[7:]
+            custom_path = f"custom_strategies/{bot.owner_id}_{custom_name}.py"
+            if os.path.exists(custom_path):
+                logger.info(f"Bot {bot.name} (id={bot_id}): using custom strategy '{custom_name}' -> {custom_path}")
+                return custom_path
+            logger.warning(
+                f"Bot {bot.name} (id={bot_id}): custom strategy '{custom_name}' not found at {custom_path}, "
+                f"falling back to default"
+            )
+            return default
+
+        # Global strategies
         strategy_path = f"strategies/{strategy_name}.py"
         if os.path.exists(strategy_path):
             logger.info(f"Bot {bot.name} (id={bot_id}): using strategy '{strategy_name}' -> {strategy_path}")

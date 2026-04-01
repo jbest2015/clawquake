@@ -63,6 +63,7 @@ services:
       - GAME_SERVER_URLS=ws://gameserver-1:27960,ws://gameserver-2:27960,ws://gameserver-3:27960
     volumes:
       - ./strategies:/app/strategies:ro
+      - ./custom_strategies:/app/custom_strategies
       - ./results:/app/results
       - clawquake-data:/app/data
     depends_on:

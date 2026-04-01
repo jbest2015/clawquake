@@ -29,7 +29,10 @@ from agent_auth import (
     mark_agent_registration_used,
 )
 from auth import _get_user_from_token, get_db, optional_security
-from models import BotDB, SessionLocal, UserDB
+from models import (
+    BotDB, MatchDB, MatchParticipantDB, QueueEntryDB, SessionLocal,
+    TournamentDB, TournamentMatchDB, TournamentParticipantDB, UserDB,
+)
 from telemetry_hub import TelemetryHub, validate_action
 
 logger = logging.getLogger("clawquake.agent_interface")
@@ -152,6 +155,119 @@ def observe_post(
 ):
     _resolve_bot_access(db, bot_id, credentials, x_api_key, x_agent_key)
     return _observe_for_bot(bot_id)
+
+
+@router.get("/bot-status")
+def bot_status(
+    bot_id: int = Query(...),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_agent_key: Optional[str] = Header(default=None, alias="X-Agent-Key"),
+    db: Session = Depends(get_db),
+):
+    """Full situational awareness for an AI agent controlling a bot."""
+    bot = _resolve_bot_access(db, bot_id, credentials, x_api_key, x_agent_key)
+
+    result: Dict[str, Any] = {
+        "bot_id": bot.id,
+        "bot_name": bot.name,
+        "strategy": bot.strategy or "default",
+        "elo": bot.elo,
+        "wins": bot.wins,
+        "losses": bot.losses,
+        "kills": bot.kills,
+        "deaths": bot.deaths,
+        "tournament": None,
+        "queue": None,
+        "active_match": None,
+    }
+
+    # Check tournament participation
+    tp = (
+        db.query(TournamentParticipantDB)
+        .filter(TournamentParticipantDB.bot_id == bot_id)
+        .first()
+    )
+    if tp:
+        tournament = db.query(TournamentDB).filter(TournamentDB.id == tp.tournament_id).first()
+        if tournament and tournament.status in ("pending", "active"):
+            t_count = db.query(TournamentParticipantDB).filter_by(tournament_id=tournament.id).count()
+            # Find next opponent from bracket
+            next_opponent = None
+            if tournament.status == "active":
+                tm = (
+                    db.query(TournamentMatchDB)
+                    .filter(
+                        TournamentMatchDB.tournament_id == tournament.id,
+                        TournamentMatchDB.winner_bot_id.is_(None),
+                        (TournamentMatchDB.player1_bot_id == bot_id) | (TournamentMatchDB.player2_bot_id == bot_id),
+                    )
+                    .first()
+                )
+                if tm:
+                    opp_id = tm.player2_bot_id if tm.player1_bot_id == bot_id else tm.player1_bot_id
+                    if opp_id:
+                        opp_bot = db.query(BotDB).filter(BotDB.id == opp_id).first()
+                        next_opponent = opp_bot.name if opp_bot else None
+
+            result["tournament"] = {
+                "id": tournament.id,
+                "name": tournament.name,
+                "status": tournament.status,
+                "my_seed": tp.seed,
+                "eliminated": bool(tp.eliminated),
+                "participants": t_count,
+                "current_round": tournament.current_round,
+                "next_opponent": next_opponent,
+            }
+
+    # Check queue status
+    queue_entry = (
+        db.query(QueueEntryDB)
+        .filter(QueueEntryDB.bot_id == bot_id, QueueEntryDB.status.in_(["waiting", "matched"]))
+        .order_by(QueueEntryDB.queued_at.desc())
+        .first()
+    )
+    if queue_entry:
+        position = (
+            db.query(QueueEntryDB)
+            .filter(QueueEntryDB.status == "waiting", QueueEntryDB.queued_at <= queue_entry.queued_at)
+            .count()
+        )
+        result["queue"] = {
+            "position": position,
+            "status": queue_entry.status,
+            "queued_at": queue_entry.queued_at.isoformat() if queue_entry.queued_at else None,
+        }
+
+    # Check active match
+    active_participant = (
+        db.query(MatchParticipantDB)
+        .join(MatchDB, MatchDB.id == MatchParticipantDB.match_id)
+        .filter(MatchParticipantDB.bot_id == bot_id, MatchDB.ended_at.is_(None))
+        .first()
+    )
+    if active_participant:
+        match = db.query(MatchDB).filter(MatchDB.id == active_participant.match_id).first()
+        if match:
+            opponents = []
+            participants = db.query(MatchParticipantDB).filter(
+                MatchParticipantDB.match_id == match.id,
+                MatchParticipantDB.bot_id != bot_id,
+            ).all()
+            for p in participants:
+                opp = db.query(BotDB).filter(BotDB.id == p.bot_id).first()
+                if opp:
+                    opponents.append(opp.name)
+
+            result["active_match"] = {
+                "match_id": match.id,
+                "map_name": match.map_name,
+                "opponents": opponents,
+                "started_at": match.started_at.isoformat() if match.started_at else None,
+            }
+
+    return result
 
 
 @router.post("/act")
