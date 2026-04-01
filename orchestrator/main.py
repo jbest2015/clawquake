@@ -271,7 +271,8 @@ async def _run_tournament(tournament_id: int):
     try:
         while True:
             db = SessionLocal()
-            ready_match = None
+            # Extract plain values before closing session to avoid DetachedInstanceError
+            match_info = None  # (tournament_match_id, game_match_id, bot1_id, bot2_id)
             try:
                 tournament = db.query(TournamentDB).filter(TournamentDB.id == tournament_id).first()
                 if not tournament or tournament.status != "active":
@@ -281,10 +282,13 @@ async def _run_tournament(tournament_id: int):
                 ready = system.get_ready_matches(tournament_id)
                 if ready:
                     ready_match = ready[0]
-                    bot_ids = [ready_match.player1_bot_id, ready_match.player2_bot_id]
-                    game_match_id = matchmaker.create_direct_match(db, bot_ids)
+                    bot1_id = ready_match.player1_bot_id
+                    bot2_id = ready_match.player2_bot_id
+                    t_match_id = ready_match.id
+                    game_match_id = matchmaker.create_direct_match(db, [bot1_id, bot2_id])
                     ready_match.game_match_id = game_match_id
                     db.commit()
+                    match_info = (t_match_id, game_match_id, bot1_id, bot2_id)
                 else:
                     unfinished = (
                         db.query(TournamentMatchDB)
@@ -299,25 +303,30 @@ async def _run_tournament(tournament_id: int):
             finally:
                 db.close()
 
-            if not ready_match:
+            if not match_info:
                 await asyncio.sleep(1.0)
                 continue
 
+            t_match_id, game_match_id, bot1_id, bot2_id = match_info
+            logger.info(f"Tournament {tournament_id}: launching match {game_match_id} ({bot1_id} vs {bot2_id})")
+
             result = await matchmaker.run_existing_match(
-                ready_match.game_match_id,
-                [ready_match.player1_bot_id, ready_match.player2_bot_id],
+                game_match_id,
+                [bot1_id, bot2_id],
             )
 
             if not result or not result.get("winner_id"):
+                logger.warning(f"Tournament {tournament_id}: match {game_match_id} returned no winner")
                 await asyncio.sleep(1.0)
                 continue
 
+            logger.info(f"Tournament {tournament_id}: match {game_match_id} winner={result['winner_id']}")
             db = SessionLocal()
             try:
                 system = TournamentBracket(db)
                 system.record_result(
                     tournament_id,
-                    ready_match.id,
+                    t_match_id,
                     int(result["winner_id"]),
                 )
             finally:
