@@ -219,3 +219,168 @@ def test_queue_status(client: TestClient):
     res = client.get(f"/api/queue/status?bot_id={b2['id']}", headers=bearer(t2))
     assert res.status_code == 200
     assert res.json()["position"] == 2
+
+
+def test_create_agent_registration(client: TestClient):
+    token = register_user(client, "ria", "ria@example.com")["access_token"]
+    bot = create_bot(client, token, "RiaBot", strategy="codex")
+
+    res = client.post(
+        f"/api/bots/{bot['id']}/agent-registrations",
+        json={"name": "primary"},
+        headers=bearer(token),
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["bot_id"] == bot["id"]
+    assert data["name"] == "primary"
+    assert data["agent_key"].startswith("cq_")
+    assert "/getting-started?" in data["invite_url"]
+    assert "agent_key=" in data["invite_url"]
+
+
+def test_list_agent_registrations(client: TestClient):
+    token = register_user(client, "sara", "sara@example.com")["access_token"]
+    bot = create_bot(client, token, "SaraBot")
+    client.post(
+        f"/api/bots/{bot['id']}/agent-registrations",
+        json={"name": "primary"},
+        headers=bearer(token),
+    )
+
+    res = client.get(f"/api/bots/{bot['id']}/agent-registrations", headers=bearer(token))
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 1
+    assert data[0]["bot_id"] == bot["id"]
+    assert data[0]["status"] == "active"
+
+
+def test_revoke_agent_registration(client: TestClient):
+    token = register_user(client, "tess", "tess@example.com")["access_token"]
+    bot = create_bot(client, token, "TessBot")
+    created = client.post(
+        f"/api/bots/{bot['id']}/agent-registrations",
+        json={"name": "primary"},
+        headers=bearer(token),
+    ).json()
+
+    res = client.delete(f"/api/agent-registrations/{created['id']}", headers=bearer(token))
+    assert res.status_code == 200
+    assert res.json()["revoked"] is True
+
+    res = client.get(f"/api/bots/{bot['id']}/agent-registrations", headers=bearer(token))
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+def test_connect_agent_link(client: TestClient):
+    token = register_user(client, "uma", "uma@example.com")["access_token"]
+    bot = create_bot(client, token, "UmaBot")
+    created = client.post(
+        f"/api/bots/{bot['id']}/agent-registrations",
+        json={"name": "primary"},
+        headers=bearer(token),
+    ).json()
+
+    res = client.get("/api/agent/connect", params={"agent_key": created["agent_key"]})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["bot_id"] == bot["id"]
+    assert data["observe_url"].startswith("http://testserver/api/agent/observe")
+    assert f"bot_id={bot['id']}" in data["observe_url"]
+    assert data["act_url"].startswith("http://testserver/api/agent/act")
+    assert data["stream_url"].startswith("ws://testserver/api/agent/stream")
+    assert "agent_key=" in data["stream_url"]
+
+
+def test_tournament_creator_can_start(client: TestClient):
+    creator = register_user(client, "vera", "vera@example.com")["access_token"]
+    other = register_user(client, "walt", "walt@example.com")["access_token"]
+    creator_bot = create_bot(client, creator, "VeraBot")
+    other_bot = create_bot(client, other, "WaltBot")
+
+    created = client.post(
+        "/api/tournaments",
+        json={"name": "Spring Cup", "format": "single_elim"},
+        headers=bearer(creator),
+    )
+    assert created.status_code == 200
+    tournament = created.json()
+    assert tournament["created_by_user_id"] is not None
+
+    tid = tournament["id"]
+    assert client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": creator_bot["id"]},
+        headers=bearer(creator),
+    ).status_code == 200
+    assert client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": other_bot["id"]},
+        headers=bearer(other),
+    ).status_code == 200
+
+    res = client.post(f"/api/tournaments/{tid}/start", headers=bearer(creator))
+    assert res.status_code == 200
+    assert res.json()["started"] is True
+
+
+def test_non_owner_cannot_start_tournament(client: TestClient):
+    creator = register_user(client, "xena", "xena@example.com")["access_token"]
+    other = register_user(client, "yara", "yara@example.com")["access_token"]
+    creator_bot = create_bot(client, creator, "XenaBot")
+    other_bot = create_bot(client, other, "YaraBot")
+
+    tid = client.post(
+        "/api/tournaments",
+        json={"name": "Owner Cup", "format": "single_elim"},
+        headers=bearer(creator),
+    ).json()["id"]
+
+    client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": creator_bot["id"]},
+        headers=bearer(creator),
+    )
+    client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": other_bot["id"]},
+        headers=bearer(other),
+    )
+
+    res = client.post(f"/api/tournaments/{tid}/start", headers=bearer(other))
+    assert res.status_code == 403
+
+
+def test_cannot_join_tournament_after_start(client: TestClient):
+    creator = register_user(client, "zane", "zane@example.com")["access_token"]
+    other = register_user(client, "abby", "abby@example.com")["access_token"]
+    creator_bot = create_bot(client, creator, "ZaneBot")
+    other_bot = create_bot(client, other, "AbbyBot")
+
+    tid = client.post(
+        "/api/tournaments",
+        json={"name": "Closed Cup", "format": "single_elim"},
+        headers=bearer(creator),
+    ).json()["id"]
+
+    assert client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": creator_bot["id"]},
+        headers=bearer(creator),
+    ).status_code == 200
+    assert client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": other_bot["id"]},
+        headers=bearer(other),
+    ).status_code == 200
+    assert client.post(f"/api/tournaments/{tid}/start", headers=bearer(creator)).status_code == 200
+
+    late_bot = create_bot(client, other, "LateBot")
+    res = client.post(
+        f"/api/tournaments/{tid}/join",
+        json={"bot_id": late_bot["id"]},
+        headers=bearer(other),
+    )
+    assert res.status_code == 400

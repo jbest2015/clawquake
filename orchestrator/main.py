@@ -27,6 +27,7 @@ from models import (
     MatchResultReport, MatchDetailResponse,
 )
 from routes_bots import router as bots_router
+from routes_agents import router as agents_router
 from routes_keys import router as keys_router
 from routes_queue import router as queue_router
 from rcon import get_server_status, add_bot, change_map, server_say, send_rcon
@@ -36,8 +37,9 @@ from matchmaker import MatchMaker
 from websocket_hub import WebSocketHub
 from tournament.bracket import TournamentBracket
 from models import (
-    TournamentCreate, TournamentJoin, TournamentResponse
+    TournamentCreate, TournamentJoin, TournamentResponse, TournamentDB, TournamentParticipantDB
 )
+from models import TournamentMatchDB
 from ai_agent_interface import router as ai_agent_router
 import ai_agent_interface
 from telemetry_hub import TelemetryHub
@@ -85,6 +87,7 @@ telemetry_hub = TelemetryHub()
 ai_agent_interface.telemetry_hub = telemetry_hub
 event_queue: SimpleQueue[tuple[str, dict]] = SimpleQueue()
 websocket_publisher_task: asyncio.Task | None = None
+tournament_tasks: dict[int, asyncio.Task] = {}
 
 
 app = FastAPI(title="ClawQuake Orchestrator", version="0.2.0")
@@ -98,6 +101,7 @@ app.add_middleware(
 )
 
 app.include_router(bots_router)
+app.include_router(agents_router)
 app.include_router(keys_router)
 app.include_router(queue_router)
 app.include_router(ai_agent_router)
@@ -222,6 +226,88 @@ async def _shutdown_matchmaker():
         with suppress(asyncio.CancelledError):
             await matchmaker_task
         matchmaker_task = None
+
+
+@app.on_event("shutdown")
+async def _shutdown_tournaments():
+    for task in list(tournament_tasks.values()):
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+    tournament_tasks.clear()
+
+
+def _bot_name_map(db: Session) -> dict[int, str]:
+    return {
+        bot.id: bot.name
+        for bot in db.query(BotDB).all()
+    }
+
+
+async def _run_tournament(tournament_id: int):
+    try:
+        while True:
+            db = SessionLocal()
+            ready_match = None
+            try:
+                tournament = db.query(TournamentDB).filter(TournamentDB.id == tournament_id).first()
+                if not tournament or tournament.status != "active":
+                    return
+
+                system = TournamentBracket(db)
+                ready = system.get_ready_matches(tournament_id)
+                if ready:
+                    ready_match = ready[0]
+                    bot_ids = [ready_match.player1_bot_id, ready_match.player2_bot_id]
+                    game_match_id = matchmaker.create_direct_match(db, bot_ids)
+                    ready_match.game_match_id = game_match_id
+                    db.commit()
+                else:
+                    unfinished = (
+                        db.query(TournamentMatchDB)
+                        .filter(
+                            TournamentMatchDB.tournament_id == tournament_id,
+                            TournamentMatchDB.winner_bot_id.is_(None),
+                        )
+                        .count()
+                    )
+                    if unfinished == 0 and tournament.status == "completed":
+                        return
+            finally:
+                db.close()
+
+            if not ready_match:
+                await asyncio.sleep(1.0)
+                continue
+
+            result = await matchmaker.run_existing_match(
+                ready_match.game_match_id,
+                [ready_match.player1_bot_id, ready_match.player2_bot_id],
+            )
+
+            if not result or not result.get("winner_id"):
+                await asyncio.sleep(1.0)
+                continue
+
+            db = SessionLocal()
+            try:
+                system = TournamentBracket(db)
+                system.record_result(
+                    tournament_id,
+                    ready_match.id,
+                    int(result["winner_id"]),
+                )
+            finally:
+                db.close()
+    finally:
+        tournament_tasks.pop(tournament_id, None)
+
+
+def _ensure_tournament_runner(tournament_id: int):
+    existing = tournament_tasks.get(tournament_id)
+    if existing and not existing.done():
+        return
+    tournament_tasks[tournament_id] = asyncio.create_task(_run_tournament(tournament_id))
 
 
 @app.on_event("shutdown")
@@ -558,12 +644,44 @@ def create_tournament(
     db: Session = Depends(get_db),
 ):
     system = TournamentBracket(db)
-    bracket = system.create_tournament(t.name, t.format)
+    bracket = system.create_tournament(t.name, t.format, created_by_user_id=user.id)
     return TournamentResponse(
         id=bracket.id, name=bracket.name, format=bracket.format,
-        status="pending", participant_count=0, current_round=0,
+        created_by_user_id=bracket.created_by_user_id, status="pending", participant_count=0, current_round=0,
         winner_bot_id=None
     )
+
+
+@app.get("/api/tournaments", response_model=list[TournamentResponse])
+def list_tournaments(
+    db: Session = Depends(get_db),
+):
+    tournaments = (
+        db.query(TournamentDB)
+        .order_by(TournamentDB.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    items: list[TournamentResponse] = []
+    for tournament in tournaments:
+        participant_count = (
+            db.query(TournamentParticipantDB)
+            .filter(TournamentParticipantDB.tournament_id == tournament.id)
+            .count()
+        )
+        items.append(
+            TournamentResponse(
+                id=tournament.id,
+                name=tournament.name,
+                format=tournament.format,
+                created_by_user_id=tournament.created_by_user_id,
+                status=tournament.status,
+                participant_count=participant_count,
+                current_round=tournament.current_round,
+                winner_bot_id=tournament.winner_bot_id,
+            )
+        )
+    return items
 
 @app.post("/api/tournaments/{tid}/join")
 def join_tournament(
@@ -573,6 +691,12 @@ def join_tournament(
     db: Session = Depends(get_db),
 ):
     system = TournamentBracket(db)
+    tournament = db.query(TournamentDB).filter_by(id=tid).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if tournament.status != "pending":
+        raise HTTPException(status_code=400, detail="Tournament is not accepting new bots")
+
     bot = db.query(BotDB).filter_by(id=join.bot_id).first()
     if not bot:
         raise HTTPException(status_code=404, detail="Bot not found")
@@ -587,20 +711,22 @@ def join_tournament(
     return {"joined": True, "bot": bot.name}
 
 @app.post("/api/tournaments/{tid}/start")
-def start_tournament(
+async def start_tournament(
     tid: int,
     user: UserDB = Depends(get_current_user), # Admin only? Or owner?
     db: Session = Depends(get_db),
 ):
-    # check if user is admin or created the tournament? 
-    # For now, require admin
-    if not user.is_admin:
-         raise HTTPException(status_code=403, detail="Admin required to start tournament")
-         
+    tournament = db.query(TournamentDB).filter(TournamentDB.id == tid).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if not user.is_admin and tournament.created_by_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Tournament owner or admin required")
+
     system = TournamentBracket(db)
     ok = system.start_tournament(tid)
     if not ok:
         raise HTTPException(status_code=400, detail="Could not start (not enough players or already started)")
+    _ensure_tournament_runner(tid)
     return {"started": True}
 
 @app.get("/api/tournaments/{tid}")
@@ -610,13 +736,19 @@ def get_tournament(
 ):
     system = TournamentBracket(db)
     # Get tournament info
-    from models import TournamentDB, TournamentParticipantDB
     t = db.query(TournamentDB).get(tid)
     if not t:
         raise HTTPException(status_code=404, detail="Tournament not found")
         
     count = db.query(TournamentParticipantDB).filter_by(tournament_id=tid).count()
     bracket_data = system.get_bracket(tid)
+    bot_names = _bot_name_map(db)
+    participants = (
+        db.query(TournamentParticipantDB)
+        .filter_by(tournament_id=tid)
+        .order_by(TournamentParticipantDB.seed.asc(), TournamentParticipantDB.id.asc())
+        .all()
+    )
     
     # Format matches for JSON
     rounds_json = {}
@@ -627,18 +759,32 @@ def get_tournament(
                 "match_id": m.id,
                 "match_num": m.match_num,
                 "p1": m.player1_bot_id,
+                "p1_name": bot_names.get(m.player1_bot_id, "TBD") if m.player1_bot_id else "TBD",
                 "p2": m.player2_bot_id,
+                "p2_name": bot_names.get(m.player2_bot_id, "TBD") if m.player2_bot_id else "TBD",
                 "winner": m.winner_bot_id,
-                "next": m.next_match_id
+                "winner_name": bot_names.get(m.winner_bot_id) if m.winner_bot_id else None,
+                "next": m.next_match_id,
+                "game_match_id": m.game_match_id,
             })
         rounds_json[r_num] = m_list
         
     return {
         "info": TournamentResponse(
              id=t.id, name=t.name, format=t.format, status=t.status,
-             participant_count=count, current_round=t.current_round, 
+             created_by_user_id=t.created_by_user_id,
+             participant_count=count, current_round=t.current_round,
              winner_bot_id=t.winner_bot_id
         ),
+        "participants": [
+            {
+                "bot_id": participant.bot_id,
+                "bot_name": bot_names.get(participant.bot_id, f"Bot {participant.bot_id}"),
+                "seed": participant.seed,
+                "eliminated": bool(participant.eliminated),
+            }
+            for participant in participants
+        ],
         "bracket": rounds_json
     }
 

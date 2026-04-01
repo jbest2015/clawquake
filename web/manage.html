@@ -93,6 +93,36 @@
             padding: 0.2rem 0.6rem;
             text-transform: uppercase;
         }
+        .bot-detail {
+            margin: -0.1rem 0 0.6rem;
+            padding: 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .bot-detail h4 {
+            margin-bottom: 0.6rem;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+        .link-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .link-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.8rem;
+            align-items: center;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .notice-inline {
+            margin-top: 0.6rem;
+        }
         @media (max-width: 900px) {
             .manage-layout {
                 grid-template-columns: 1fr;
@@ -121,6 +151,7 @@
                     <select id="bot-strategy"></select>
                     <button class="btn btn-primary" onclick="registerBot()">Create</button>
                 </div>
+                <div id="agent-created"></div>
                 <div class="error" id="bot-error"></div>
                 <div class="list" id="bot-list">
                     <div class="empty-state">No bots yet</div>
@@ -239,17 +270,26 @@
             }
 
             botList.innerHTML = data.map(bot => `
-                <div class="list-item">
-                    <div class="item-meta">
-                        <div class="item-title">${escapeHtml(bot.name)}</div>
-                        <div class="item-subtitle">ELO ${Math.round(bot.elo)} | ${bot.wins}W/${bot.losses}L | strategy ${escapeHtml(bot.strategy || "default")}</div>
+                <div>
+                    <div class="list-item">
+                        <div class="item-meta">
+                            <div class="item-title">${escapeHtml(bot.name)}</div>
+                            <div class="item-subtitle">ELO ${Math.round(bot.elo)} | ${bot.wins}W/${bot.losses}L | strategy ${escapeHtml(bot.strategy || "default")}</div>
+                        </div>
+                        <div class="item-actions">
+                            <select id="strategy-${bot.id}">
+                                ${renderStrategyOptions(bot.strategy || "default")}
+                            </select>
+                            <button class="btn btn-outline" onclick="updateBotStrategy(${bot.id})">Save Strategy</button>
+                            <button class="btn btn-outline" onclick="createAgentLink(${bot.id})">Create Agent Link</button>
+                            <span class="status-pill">ID ${bot.id}</span>
+                        </div>
                     </div>
-                    <div class="item-actions">
-                        <select id="strategy-${bot.id}">
-                            ${renderStrategyOptions(bot.strategy || "default")}
-                        </select>
-                        <button class="btn btn-outline" onclick="updateBotStrategy(${bot.id})">Save Strategy</button>
-                        <span class="status-pill">ID ${bot.id}</span>
+                    <div class="bot-detail">
+                        <h4>AI Agent Links</h4>
+                        <div class="link-list" id="agent-links-${bot.id}">
+                            <div class="empty-state">No agent links yet</div>
+                        </div>
                     </div>
                 </div>
             `).join("");
@@ -291,6 +331,80 @@
             }
             input.value = "";
             await loadBots();
+        }
+
+        function registrationLabel(registration) {
+            const claimed = registration.claimed_at ? "claimed" : "unclaimed";
+            return `${registration.key_prefix}... | ${claimed} | ${registration.status}`;
+        }
+
+        async function loadAgentLinks(botId) {
+            const container = document.getElementById(`agent-links-${botId}`);
+            if (!container) {
+                return;
+            }
+
+            const res = await fetch(`/api/bots/${botId}/agent-registrations`, {
+                headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                container.innerHTML = `<div class="empty-state">${escapeHtml(data.detail || "Failed to load links")}</div>`;
+                return;
+            }
+
+            if (!data.length) {
+                container.innerHTML = '<div class="empty-state">No agent links yet</div>';
+                return;
+            }
+
+            container.innerHTML = data.map(registration => `
+                <div class="link-item">
+                    <div class="item-meta">
+                        <div class="item-title">${escapeHtml(registration.name)}</div>
+                        <div class="item-subtitle">${escapeHtml(registrationLabel(registration))}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-outline" onclick="revokeAgentLink(${registration.id}, ${botId})">Revoke</button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        async function createAgentLink(botId) {
+            setError("bot-error", "");
+            const res = await fetch(`/api/bots/${botId}/agent-registrations`, {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({ name: "primary" }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("bot-error", data.detail || "Failed to create agent link");
+                return;
+            }
+
+            document.getElementById("agent-created").innerHTML = `
+                <div class="notice notice-inline">
+                    Agent link for bot ${botId} (shown once):<br>
+                    <strong>${escapeHtml(data.invite_url)}</strong>
+                </div>
+            `;
+            await loadAgentLinks(botId);
+        }
+
+        async function revokeAgentLink(registrationId, botId) {
+            setError("bot-error", "");
+            const res = await fetch(`/api/agent-registrations/${registrationId}`, {
+                method: "DELETE",
+                headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("bot-error", data.detail || "Failed to revoke agent link");
+                return;
+            }
+            await loadAgentLinks(botId);
         }
 
         async function updateBotStrategy(botId) {
@@ -424,6 +538,7 @@
                 await loadBots();
                 await loadKeys();
                 for (const bot of bots) {
+                    await loadAgentLinks(bot.id);
                     await checkQueue(bot.id);
                 }
             } catch (err) {

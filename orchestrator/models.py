@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, DateTime, Float, create_engine
+from sqlalchemy import Column, Integer, String, DateTime, Float, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # DB path: honour DATABASE_URL env var, or put in /app/data/ if that dir exists (Docker named volume)
@@ -214,6 +214,44 @@ class ApiKeyCreated(BaseModel):
     created_at: datetime
 
 
+class AgentRegistrationDB(Base):
+    __tablename__ = "agent_registrations"
+    id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(Integer, nullable=False, index=True)
+    created_by_user_id = Column(Integer, nullable=False, index=True)
+    name = Column(String, nullable=False, default="primary")
+    key_hash = Column(String, nullable=False, unique=True, index=True)
+    key_prefix = Column(String, nullable=False, default="cq_")
+    status = Column(String, nullable=False, default="active")  # active | revoked
+    created_at = Column(DateTime, default=datetime.utcnow)
+    claimed_at = Column(DateTime, nullable=True)
+    last_used = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
+
+class AgentRegistrationCreate(BaseModel):
+    name: str = "primary"
+    expires_in_days: Optional[int] = None
+
+
+class AgentRegistrationResponse(BaseModel):
+    id: int
+    bot_id: int
+    created_by_user_id: int
+    name: str
+    key_prefix: str
+    status: str
+    created_at: datetime
+    claimed_at: Optional[datetime] = None
+    last_used: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+
+class AgentRegistrationCreated(AgentRegistrationResponse):
+    invite_url: str
+    agent_key: str
+
+
 class BotRegister(BaseModel):
     name: str
     strategy: str = "default"  # strategy file stem (e.g. "antigravity", "competition_reference")
@@ -231,6 +269,7 @@ class TournamentDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     format = Column(String, default="single_elim") # single_elim, double_elim
+    created_by_user_id = Column(Integer, nullable=True, index=True)
     status = Column(String, default="pending") # pending, active, completed
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
@@ -273,6 +312,7 @@ class TournamentResponse(BaseModel):
     id: int
     name: str
     format: str
+    created_by_user_id: Optional[int]
     status: str
     participant_count: int
     current_round: int
@@ -293,3 +333,23 @@ class OpponentProfileDB(Base):
 
 # ── Create all tables (must be AFTER all model definitions) ───
 Base.metadata.create_all(bind=engine)
+
+
+def _add_sqlite_column_if_missing(table_name: str, column_name: str, ddl: str):
+    if engine.dialect.name != "sqlite":
+        return
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns(table_name)}
+    if column_name in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {ddl}"))
+
+
+_add_sqlite_column_if_missing(
+    "tournaments",
+    "created_by_user_id",
+    "created_by_user_id INTEGER",
+)

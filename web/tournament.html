@@ -7,60 +7,229 @@
     <title>ClawQuake — Tournaments</title>
     <link rel="stylesheet" href="/style.css">
     <style>
+        .page-wrap {
+            max-width: 1180px;
+            margin: 1.5rem auto 2rem;
+            padding: 0 1rem;
+            display: grid;
+            gap: 1rem;
+        }
+
+        .grid-two {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 1rem;
+        }
+
+        .stack {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .inline-form {
+            display: flex;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+        }
+
+        .inline-form input,
+        .inline-form select {
+            flex: 1;
+            min-width: 180px;
+            padding: 0.75rem 0.95rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+        }
+
+        .helper {
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            line-height: 1.45;
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            margin-bottom: 0.8rem;
+        }
+
+        .error {
+            min-height: 1.2rem;
+            color: var(--accent);
+            font-size: 0.9rem;
+        }
+
+        .list {
+            display: grid;
+            gap: 0.7rem;
+        }
+
+        .list-item,
+        .summary-box,
+        .bot-chip,
+        .match-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .list-item {
+            padding: 0.9rem;
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .item-title {
+            font-weight: 700;
+        }
+
+        .item-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .pill-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+        }
+
+        .pill {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 0.2rem 0.65rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .pill.live {
+            color: #83f28f;
+            border-color: rgba(131, 242, 143, 0.45);
+            background: rgba(131, 242, 143, 0.08);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.8rem;
+        }
+
+        .summary-box {
+            padding: 0.9rem;
+        }
+
+        .summary-label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .summary-value {
+            margin-top: 0.35rem;
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+            margin-top: 0.9rem;
+        }
+
+        .bot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .bot-chip {
+            padding: 0.85rem;
+            display: grid;
+            gap: 0.55rem;
+        }
+
         .bracket {
             display: flex;
-            flex-direction: row;
+            gap: 1rem;
             overflow-x: auto;
-            padding: 2rem;
-            gap: 2rem;
+            padding-bottom: 0.3rem;
         }
 
         .round {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-            min-width: 200px;
+            min-width: 220px;
+            display: grid;
+            gap: 0.75rem;
+            align-content: start;
         }
 
-        .match {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            padding: 0.5rem;
-            margin: 1rem 0;
-            display: flex;
-            flex-direction: column;
-            position: relative;
+        .round h4 {
+            margin: 0;
+            text-align: center;
         }
 
-        .match::after {
-            /* Connecting lines logic would go here, simplified for MVP */
+        .match-card {
+            padding: 0.7rem;
+            display: grid;
+            gap: 0.5rem;
         }
 
         .participant {
-            padding: 0.2rem 0.5rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 0.45rem 0.55rem;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid transparent;
             display: flex;
             justify-content: space-between;
-        }
-
-        .participant:last-child {
-            border-bottom: none;
+            gap: 0.65rem;
+            font-size: 0.92rem;
         }
 
         .participant.winner {
-            color: #4ade80;
-            font-weight: bold;
+            color: #88ef92;
+            border-color: rgba(136, 239, 146, 0.35);
         }
 
         .participant.loser {
-            color: #f87171;
-            opacity: 0.7;
+            color: #f49f9f;
+            opacity: 0.78;
         }
 
         .participant.tbd {
-            color: #94a3b8;
+            color: var(--text-secondary);
             font-style: italic;
+        }
+
+        .empty-state {
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 980px) {
+            .grid-two {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 640px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -69,125 +238,515 @@
     <div class="header">
         <h1>Tournaments</h1>
         <div class="user-info">
+            <a class="btn btn-outline" href="/getting-started">Getting Started</a>
+            <a class="btn btn-outline" href="/manage.html">Manage Bots</a>
             <a class="btn btn-outline" href="/dashboard.html">Dashboard</a>
         </div>
     </div>
 
-    <div class="container">
-        <!-- Tournament Selector -->
-        <div class="card">
-            <div class="card-header">
-                <h3>Active Tournaments</h3>
-                <button class="btn btn-outline" onclick="loadTournaments()">Refresh</button>
-            </div>
-            <div class="card-body" id="tournament-list">
-                Loading...
-            </div>
-        </div>
+    <div class="page-wrap">
+        <div class="grid-two">
+            <div class="stack">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Create Tournament</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="helper" id="auth-message">
+                            Log in to create tournaments and register your bots.
+                        </div>
+                        <div class="inline-form" style="margin-top:0.9rem;">
+                            <input id="tournament-name" type="text" placeholder="Spring Open">
+                            <select id="tournament-format">
+                                <option value="single_elim">Single Elimination</option>
+                            </select>
+                            <button class="btn btn-primary" id="create-button" onclick="createTournament()" disabled>Create</button>
+                        </div>
+                        <div class="error" id="create-error"></div>
+                    </div>
+                </div>
 
-        <!-- Bracket View -->
-        <div class="card" id="bracket-view" style="display:none;">
-            <div class="card-header">
-                <h3 id="bracket-title">Tournament Bracket</h3>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>All Tournaments</h3>
+                        <button class="btn btn-outline" onclick="loadTournaments()">Refresh</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="tournament-list">
+                            <div class="empty-state">Loading tournaments...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="bracket" id="bracket-container"></div>
+
+            <div class="stack">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 id="detail-title">Tournament Details</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="detail-empty" class="helper">
+                            Pick a tournament to see the bracket, register bots, and start the event when everyone is ready.
+                        </div>
+                        <div id="detail-content" style="display:none;">
+                            <div class="summary-grid" id="summary-grid"></div>
+                            <div class="action-row" id="detail-actions"></div>
+                            <div class="error" id="detail-error"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" id="my-bots-card" style="display:none;">
+                    <div class="card-header">
+                        <h3>Your Bots</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="helper" id="my-bots-helper">
+                            Choose which of your bots should enter this tournament.
+                        </div>
+                        <div class="bot-grid" id="my-bots-list"></div>
+                    </div>
+                </div>
+
+                <div class="card" id="participants-card" style="display:none;">
+                    <div class="card-header">
+                        <h3>Registered Bots</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="participants-list"></div>
+                    </div>
+                </div>
+
+                <div class="card" id="bracket-card" style="display:none;">
+                    <div class="card-header">
+                        <h3>Bracket</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="bracket" id="bracket-container"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        const AUTH_HEADERS = {
-            'Authorization': 'Bearer ' + localStorage.getItem('clawquake_token')
-        };
+        const token = localStorage.getItem("clawquake_token") || "";
+        const PLAY_URL = "/play/";
+        let currentUser = null;
+        let myBots = [];
+        let selectedTournamentId = null;
+        let detailPoll = null;
 
-        async function loadTournaments() {
-            // For MVP we just load ID 1 or a manually created list?
-            // Endpoints: POST /api/tournaments
-            // We need a proper LIST endpoint.
-            // Oh right, I didn't add a LIST tournaments endpoint in Batch 3.
-            // I added GET /api/tournaments/{id}.
-            // For now, let's just create a quick UI to ENTER an ID.
-
-            const html = `
-                <div style="display:flex; gap:1rem;">
-                    <input type="number" id="tid-input" placeholder="Tournament ID" value="1" style="background:#333; border:1px solid #555; color:white; padding:0.5rem;">
-                    <button class="btn btn-primary" onclick="loadBracket(document.getElementById('tid-input').value)">Load Bracket</button>
-                </div>
-                <div style="margin-top:1rem; font-size:0.8rem; color:#888;">
-                    (List endpoint not yet implemented, please enter ID manually)
-                </div>
-            `;
-            document.getElementById('tournament-list').innerHTML = html;
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text ?? "";
+            return div.innerHTML;
         }
 
-        async function loadBracket(tid) {
+        function authHeaders() {
+            const headers = {};
+            if (token) {
+                headers["Authorization"] = "Bearer " + token;
+            }
+            return headers;
+        }
+
+        async function fetchJson(url, options = {}) {
+            const merged = {
+                ...options,
+                headers: {
+                    ...(options.headers || {}),
+                    ...authHeaders(),
+                },
+            };
+            const response = await fetch(url, merged);
+            let data = {};
             try {
-                const res = await fetch(`/api/tournaments/${tid}`, { headers: AUTH_HEADERS });
-                if (!res.ok) {
-                    alert("Tournament not found");
-                    return;
-                }
-                const data = await res.json();
-                renderBracket(data);
-            } catch (e) {
-                console.error(e);
+                data = await response.json();
+            } catch (err) {
+                data = {};
+            }
+            return { response, data };
+        }
+
+        function setCreateError(message) {
+            document.getElementById("create-error").textContent = message || "";
+        }
+
+        function setDetailError(message) {
+            document.getElementById("detail-error").textContent = message || "";
+        }
+
+        async function loadCurrentUser() {
+            if (!token) {
+                currentUser = null;
+                return;
+            }
+
+            const { response, data } = await fetchJson("/api/auth/me");
+            if (!response.ok) {
+                currentUser = null;
+                return;
+            }
+            currentUser = data;
+        }
+
+        async function loadMyBots() {
+            if (!token) {
+                myBots = [];
+                return;
+            }
+
+            const { response, data } = await fetchJson("/api/bots");
+            if (!response.ok || !Array.isArray(data)) {
+                myBots = [];
+                return;
+            }
+            myBots = data;
+        }
+
+        function applyAuthState() {
+            const authMessage = document.getElementById("auth-message");
+            const createButton = document.getElementById("create-button");
+
+            if (currentUser) {
+                authMessage.textContent = `Logged in as ${currentUser.username}. Create a tournament, then have people register their bots before you start it.`;
+                createButton.disabled = false;
+            } else {
+                authMessage.textContent = "Log in to create tournaments and register your bots.";
+                createButton.disabled = true;
             }
         }
 
-        function renderBracket(data) {
-            document.getElementById('bracket-view').style.display = 'block';
-            document.getElementById('bracket-title').textContent = data.info.name + " (" + data.info.status + ")";
+        async function createTournament() {
+            if (!currentUser) {
+                setCreateError("Log in first.");
+                return;
+            }
 
-            const container = document.getElementById('bracket-container');
-            container.innerHTML = '';
+            const name = document.getElementById("tournament-name").value.trim();
+            const format = document.getElementById("tournament-format").value;
+            if (!name) {
+                setCreateError("Tournament name is required.");
+                return;
+            }
 
-            const rounds = data.bracket; // Dictionary of round_num -> list of matches
-
-            // Convert to array and sort
-            const sortedRounds = Object.keys(rounds).sort((a, b) => parseInt(a) - parseInt(b));
-
-            sortedRounds.forEach(rNum => {
-                const roundDiv = document.createElement('div');
-                roundDiv.className = 'round';
-
-                // Add header
-                const h4 = document.createElement('h4');
-                h4.textContent = `Round ${rNum}`;
-                h4.style.textAlign = 'center';
-                h4.style.marginBottom = '1rem';
-                roundDiv.appendChild(h4);
-
-                rounds[rNum].forEach(match => {
-                    const mDiv = document.createElement('div');
-                    mDiv.className = 'match';
-
-                    const p1 = match.p1 || "TBD";
-                    const p2 = match.p2 || "TBD";
-
-                    mDiv.innerHTML = `
-                        <div class="participant ${getParticipantClass(match, match.p1)}">
-                           ${p1}
-                        </div>
-                        <div class="participant ${getParticipantClass(match, match.p2)}">
-                           ${p2}
-                        </div>
-                    `;
-                    roundDiv.appendChild(mDiv);
-                });
-
-                container.appendChild(roundDiv);
+            setCreateError("");
+            const { response, data } = await fetchJson("/api/tournaments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, format }),
             });
+
+            if (!response.ok) {
+                setCreateError(data.detail || "Could not create tournament.");
+                return;
+            }
+
+            document.getElementById("tournament-name").value = "";
+            await loadTournaments();
+            await openTournament(data.id);
         }
 
-        function getParticipantClass(match, botId) {
-            if (!botId) return "tbd";
-            if (match.winner == botId) return "winner";
-            if (match.winner && match.winner != botId) return "loser";
-            return "";
+        function tournamentListCard(tournament) {
+            const live = tournament.status === "active" ? `<span class="pill live">Live</span>` : "";
+            return `
+                <div class="list-item">
+                    <div class="item-row">
+                        <div>
+                            <div class="item-title">${escapeHtml(tournament.name)}</div>
+                            <div class="item-subtitle">Tournament #${tournament.id}</div>
+                        </div>
+                        <div class="pill-row">
+                            <span class="pill">${escapeHtml(tournament.status)}</span>
+                            <span class="pill">${tournament.participant_count} bots</span>
+                            ${live}
+                        </div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-subtitle">Round ${tournament.current_round || 0} · ${escapeHtml(tournament.format)}</div>
+                        <button class="btn btn-primary" onclick="openTournament(${tournament.id})">Open</button>
+                    </div>
+                </div>
+            `;
         }
 
-        loadTournaments();
+        async function loadTournaments() {
+            const container = document.getElementById("tournament-list");
+            container.innerHTML = '<div class="empty-state">Loading tournaments...</div>';
+
+            const { response, data } = await fetchJson("/api/tournaments");
+            if (!response.ok || !Array.isArray(data)) {
+                container.innerHTML = '<div class="empty-state">Failed to load tournaments</div>';
+                return;
+            }
+
+            if (!data.length) {
+                container.innerHTML = '<div class="empty-state">No tournaments yet</div>';
+                return;
+            }
+
+            container.innerHTML = data.map(tournamentListCard).join("");
+        }
+
+        function getActiveGameMatch(data) {
+            const rounds = data.bracket || {};
+            const roundNumbers = Object.keys(rounds).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+            for (const roundNumber of roundNumbers) {
+                const match = (rounds[roundNumber] || []).find(item => item.game_match_id && !item.winner);
+                if (match) {
+                    return match;
+                }
+            }
+            return null;
+        }
+
+        function renderSummary(info) {
+            const ownerLabel = info.created_by_user_id ? `User ${info.created_by_user_id}` : "Unknown";
+            return `
+                <div class="summary-box">
+                    <div class="summary-label">Status</div>
+                    <div class="summary-value">${escapeHtml(info.status)}</div>
+                </div>
+                <div class="summary-box">
+                    <div class="summary-label">Format</div>
+                    <div class="summary-value">${escapeHtml(info.format)}</div>
+                </div>
+                <div class="summary-box">
+                    <div class="summary-label">Bots</div>
+                    <div class="summary-value">${info.participant_count}</div>
+                </div>
+                <div class="summary-box">
+                    <div class="summary-label">Owner</div>
+                    <div class="summary-value">${escapeHtml(ownerLabel)}</div>
+                </div>
+            `;
+        }
+
+        function renderParticipants(participants) {
+            const container = document.getElementById("participants-list");
+            if (!participants.length) {
+                container.innerHTML = '<div class="empty-state">No bots registered yet</div>';
+                return;
+            }
+
+            container.innerHTML = participants.map(participant => `
+                <div class="list-item">
+                    <div class="item-row">
+                        <div>
+                            <div class="item-title">${escapeHtml(participant.bot_name)}</div>
+                            <div class="item-subtitle">Bot ${participant.bot_id}</div>
+                        </div>
+                        <div class="pill-row">
+                            <span class="pill">Seed ${participant.seed || "-"}</span>
+                            ${participant.eliminated ? '<span class="pill">Eliminated</span>' : '<span class="pill">Active</span>'}
+                        </div>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        function participantClass(match, side) {
+            if (!side) {
+                return "participant tbd";
+            }
+            if (!match.winner) {
+                return "participant";
+            }
+            return match.winner === side ? "participant winner" : "participant loser";
+        }
+
+        function renderBracket(bracket) {
+            const container = document.getElementById("bracket-container");
+            const rounds = Object.keys(bracket || {}).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+            if (!rounds.length) {
+                container.innerHTML = '<div class="empty-state">Bracket will appear after the tournament starts.</div>';
+                return;
+            }
+
+            container.innerHTML = rounds.map(roundNumber => `
+                <div class="round">
+                    <h4>Round ${roundNumber}</h4>
+                    ${(bracket[roundNumber] || []).map(match => `
+                        <div class="match-card">
+                            <div class="${participantClass(match, match.p1)}">
+                                <span>${escapeHtml(match.p1_name || "TBD")}</span>
+                                <span>${match.winner === match.p1 ? "W" : ""}</span>
+                            </div>
+                            <div class="${participantClass(match, match.p2)}">
+                                <span>${escapeHtml(match.p2_name || "TBD")}</span>
+                                <span>${match.winner === match.p2 ? "W" : ""}</span>
+                            </div>
+                            <div class="pill-row">
+                                <span class="pill">Match ${match.match_num}</span>
+                                ${match.game_match_id ? `<span class="pill ${match.winner ? "" : "live"}">Game ${match.game_match_id}</span>` : ""}
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            `).join("");
+        }
+
+        function renderBotJoinOptions(data) {
+            const card = document.getElementById("my-bots-card");
+            const helper = document.getElementById("my-bots-helper");
+            const container = document.getElementById("my-bots-list");
+
+            if (!currentUser) {
+                card.style.display = "none";
+                return;
+            }
+
+            card.style.display = "block";
+            const registeredBotIds = new Set((data.participants || []).map(item => item.bot_id));
+            const joinable = data.info.status === "pending";
+
+            if (!myBots.length) {
+                helper.textContent = "Create a bot in Manage Bots first.";
+                container.innerHTML = '<div class="empty-state">No owned bots found</div>';
+                return;
+            }
+
+            helper.textContent = joinable
+                ? "Register any of your bots that should enter this bracket."
+                : "Registration is closed once the tournament has started.";
+
+            container.innerHTML = myBots.map(bot => {
+                const alreadyIn = registeredBotIds.has(bot.id);
+                const disabled = alreadyIn || !joinable;
+                const label = alreadyIn ? "Registered" : (joinable ? "Join Tournament" : "Closed");
+                return `
+                    <div class="bot-chip">
+                        <div>
+                            <div class="item-title">${escapeHtml(bot.name)}</div>
+                            <div class="item-subtitle">ELO ${Math.round(bot.elo)} · ${escapeHtml(bot.strategy || "default")}</div>
+                        </div>
+                        <button class="btn btn-outline" onclick="joinTournament(${bot.id})" ${disabled ? "disabled" : ""}>${label}</button>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderDetailActions(data) {
+            const actions = document.getElementById("detail-actions");
+            const info = data.info;
+            const liveMatch = getActiveGameMatch(data);
+            const isOwner = currentUser && (currentUser.is_admin || currentUser.id === info.created_by_user_id);
+            const canStart = isOwner && info.status === "pending" && info.participant_count >= 2;
+
+            const buttons = [
+                '<button class="btn btn-outline" onclick="refreshSelectedTournament()">Refresh</button>',
+                `<a class="btn btn-outline" href="${PLAY_URL}">Join Arena</a>`,
+            ];
+
+            if (liveMatch) {
+                buttons.push(`<a class="btn btn-primary" href="${PLAY_URL}">Watch Live Match</a>`);
+            }
+
+            if (canStart) {
+                buttons.push('<button class="btn btn-primary" onclick="startTournament()">Start Tournament</button>');
+            } else if (isOwner && info.status === "pending") {
+                buttons.push('<button class="btn btn-primary" disabled>Need 2 bots to start</button>');
+            }
+
+            actions.innerHTML = buttons.join("");
+        }
+
+        async function openTournament(tournamentId) {
+            selectedTournamentId = tournamentId;
+            window.location.hash = String(tournamentId);
+            await refreshSelectedTournament();
+
+            if (detailPoll) {
+                clearInterval(detailPoll);
+            }
+            detailPoll = setInterval(() => {
+                if (selectedTournamentId) {
+                    refreshSelectedTournament(true);
+                }
+            }, 5000);
+        }
+
+        async function refreshSelectedTournament(silent = false) {
+            if (!selectedTournamentId) {
+                return;
+            }
+
+            if (!silent) {
+                setDetailError("");
+            }
+
+            const { response, data } = await fetchJson(`/api/tournaments/${selectedTournamentId}`);
+            if (!response.ok) {
+                setDetailError(data.detail || "Failed to load tournament.");
+                return;
+            }
+
+            document.getElementById("detail-empty").style.display = "none";
+            document.getElementById("detail-content").style.display = "block";
+            document.getElementById("participants-card").style.display = "block";
+            document.getElementById("bracket-card").style.display = "block";
+            document.getElementById("detail-title").textContent = data.info.name;
+            document.getElementById("summary-grid").innerHTML = renderSummary(data.info);
+
+            renderDetailActions(data);
+            renderParticipants(data.participants || []);
+            renderBotJoinOptions(data);
+            renderBracket(data.bracket || {});
+            await loadTournaments();
+        }
+
+        async function joinTournament(botId) {
+            if (!currentUser || !selectedTournamentId) {
+                return;
+            }
+
+            setDetailError("");
+            const { response, data } = await fetchJson(`/api/tournaments/${selectedTournamentId}/join`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bot_id: botId }),
+            });
+
+            if (!response.ok) {
+                setDetailError(data.detail || "Could not register bot.");
+                return;
+            }
+
+            await refreshSelectedTournament();
+        }
+
+        async function startTournament() {
+            if (!selectedTournamentId) {
+                return;
+            }
+
+            setDetailError("");
+            const { response, data } = await fetchJson(`/api/tournaments/${selectedTournamentId}/start`, {
+                method: "POST",
+            });
+
+            if (!response.ok) {
+                setDetailError(data.detail || "Could not start tournament.");
+                return;
+            }
+
+            await refreshSelectedTournament();
+        }
+
+        async function init() {
+            await loadCurrentUser();
+            await loadMyBots();
+            applyAuthState();
+            await loadTournaments();
+
+            const hashId = parseInt(window.location.hash.replace("#", ""), 10);
+            if (hashId) {
+                await openTournament(hashId);
+            }
+        }
+
+        init();
     </script>
 </body>
 

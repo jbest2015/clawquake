@@ -428,3 +428,29 @@ class TestAsyncWait:
             pm.wait_for_match(1, poll_interval=0.01)
         )
         assert result["all_finished"]
+
+
+class TestDirectMatchLaunch:
+
+    def test_run_existing_match_does_not_require_owner_api_keys(self, db, db_factory):
+        user = create_test_user(db, username="runner", email="runner@example.com")
+        bot1 = create_test_bot(db, "RunnerOne", user.id, elo=1000.0)
+        bot2 = create_test_bot(db, "RunnerTwo", user.id, elo=1000.0)
+
+        mm = MatchMaker(
+            db_session_factory=db_factory,
+            process_manager=MagicMock(),
+        )
+        mm.process_manager.wait_for_match = AsyncMock(return_value={"all_finished": True})
+        mm.process_manager.launch_match = MagicMock()
+        mm.process_manager.cleanup_match = MagicMock()
+        mm._get_server_url = MagicMock(return_value="ws://localhost:27960")
+        mm.finalize_match = MagicMock(return_value={"winner_id": bot1.id})
+
+        result = asyncio.run(mm.run_existing_match(99, [bot1.id, bot2.id]))
+
+        assert result == {"winner_id": bot1.id}
+        mm.process_manager.launch_match.assert_called_once()
+        launch_kwargs = mm.process_manager.launch_match.call_args.kwargs
+        assert launch_kwargs["match_id"] == 99
+        assert [bot["bot_id"] for bot in launch_kwargs["bots"]] == [bot1.id, bot2.id]

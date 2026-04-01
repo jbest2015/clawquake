@@ -20,11 +20,13 @@ os.environ.setdefault("RCON_PASSWORD", "test-rcon-password")
 os.environ.setdefault("INTERNAL_SECRET", "test-internal-secret")
 
 from fastapi.testclient import TestClient
+from api_keys import generate_api_key, hash_api_key
 from telemetry_hub import TelemetryHub
 import ai_agent_interface
 from ai_agent_interface import (
     LATEST_STATES, ACTION_QUEUES, router, MAX_FRAME_SIZE,
 )
+from models import AgentRegistrationDB
 
 
 @pytest.fixture(autouse=True)
@@ -191,6 +193,27 @@ class TestAuthHelpers:
         with pytest.raises(HTTPException) as exc_info:
             _validate_internal_secret("wrong-secret")
         assert exc_info.value.status_code == 403
+
+    def test_auth_external_ws_with_agent_key(self, db):
+        from conftest import create_test_user, create_test_bot
+        from ai_agent_interface import _auth_external_ws
+
+        user = create_test_user(db, username="agentowner", email="agentowner@test.com")
+        bot = create_test_bot(db, name="AgentBot", owner_id=user.id)
+        raw_key = generate_api_key()
+        registration = AgentRegistrationDB(
+            bot_id=bot.id,
+            created_by_user_id=user.id,
+            name="primary",
+            key_hash=hash_api_key(raw_key),
+            key_prefix=raw_key[:8],
+        )
+        db.add(registration)
+        db.commit()
+
+        result = _auth_external_ws(db, bot_id=bot.id, agent_key=raw_key)
+        assert result is not None
+        assert result.id == bot.id
 
 
 # ── Oversized frame test ─────────────────────────────────────────

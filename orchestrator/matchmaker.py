@@ -13,10 +13,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from models import (
-    QueueEntryDB, MatchDB, MatchParticipantDB, BotDB, ApiKeyDB,
-    SessionLocal,
-)
+from models import QueueEntryDB, MatchDB, MatchParticipantDB, BotDB, SessionLocal
 
 logger = logging.getLogger("clawquake.matchmaker")
 
@@ -201,6 +198,49 @@ class MatchMaker:
 
         return match.id
 
+    def create_direct_match(
+        self,
+        db: Session,
+        bot_ids: list[int],
+        map_name: str = DEFAULT_MAP,
+    ) -> int:
+        """
+        Create a match directly from a bot ID list (used by tournaments).
+        Does not rely on queue entries.
+        """
+        match = MatchDB(map_name=map_name, gametype="ffa")
+        db.add(match)
+        db.flush()
+
+        valid_bot_ids: list[int] = []
+        for bot_id in bot_ids:
+            bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
+            if not bot:
+                continue
+            participant = MatchParticipantDB(
+                match_id=match.id,
+                bot_id=bot.id,
+                elo_before=bot.elo,
+            )
+            db.add(participant)
+            valid_bot_ids.append(bot.id)
+
+        db.commit()
+        db.refresh(match)
+
+        self._active_matches[match.id] = {
+            "match": match,
+            "started_at": datetime.utcnow(),
+            "bot_ids": valid_bot_ids,
+        }
+        logger.info(
+            "Direct match %s created: map=%s, bots=%s",
+            match.id,
+            map_name,
+            valid_bot_ids,
+        )
+        return match.id
+
     def collect_result(self, match_id: int, bot_id: int,
                        kills: int, deaths: int, score: Optional[int] = None):
         """
@@ -315,6 +355,12 @@ class MatchMaker:
                 f"Match {match_id} finalized: winner={winner_name}, "
                 f"participants={len(participants)}"
             )
+            return {
+                "match_id": match_id,
+                "winner_id": winner_id,
+                "winner_name": winner_name,
+                "participant_count": len(participants),
+            }
 
         finally:
             db.close()
@@ -351,26 +397,6 @@ class MatchMaker:
         )
         return default
 
-    def _owner_has_active_key(self, db: Session, owner_id: int) -> bool:
-        """
-        True if owner has at least one key that is active and not expired.
-        No keys counts as ineligible.
-        """
-        keys = (
-            db.query(ApiKeyDB)
-            .filter(ApiKeyDB.user_id == owner_id, ApiKeyDB.is_active == 1)
-            .all()
-        )
-        if not keys:
-            return False
-
-        now = datetime.utcnow()
-        for key in keys:
-            expires_at = getattr(key, "expires_at", None)
-            if expires_at is None or expires_at > now:
-                return True
-        return False
-
     async def _run_match_with_processes(self, match_id: int, bot_ids: list[int]):
         """Launch bot processes, wait for completion, finalize match."""
         if not self.process_manager:
@@ -388,15 +414,6 @@ class MatchMaker:
             for bot_id in bot_ids:
                 bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
                 if bot:
-                    if not self._owner_has_active_key(db, bot.owner_id):
-                        logger.warning(
-                            "Match %s: skipping bot %s (id=%s) because owner %s has no active non-expired API key",
-                            match_id,
-                            bot.name,
-                            bot.id,
-                            bot.owner_id,
-                        )
-                        continue
                     bots_info.append({
                         "bot_id": bot.id,
                         "bot_name": bot.name,
@@ -404,9 +421,8 @@ class MatchMaker:
                     })
 
             if not bots_info:
-                logger.error(f"Match {match_id}: no valid bots found after API key validation")
-                self.finalize_match(match_id)
-                return
+                logger.error(f"Match {match_id}: no valid bots found")
+                return self.finalize_match(match_id)
 
             # Launch all bots
             self.process_manager.launch_match(
@@ -421,15 +437,38 @@ class MatchMaker:
             logger.info(f"Match {match_id}: all bots finished — {status}")
 
             # Finalize the match (ELO calculation)
-            self.finalize_match(match_id)
+            result = self.finalize_match(match_id)
 
             # Clean up process tracking
             self.process_manager.cleanup_match(match_id)
+            return result
 
         except Exception as e:
             logger.error(f"Match {match_id} process error: {e}")
+            return None
         finally:
             db.close()
+
+    async def run_direct_match(
+        self,
+        bot_ids: list[int],
+        map_name: str = DEFAULT_MAP,
+    ) -> dict | None:
+        """Create and run a direct non-queue match, returning the final result."""
+        db = self._get_db()
+        try:
+            match_id = self.create_direct_match(db, bot_ids, map_name=map_name)
+        finally:
+            db.close()
+        return await self._run_match_with_processes(match_id, bot_ids)
+
+    async def run_existing_match(
+        self,
+        match_id: int,
+        bot_ids: list[int],
+    ) -> dict | None:
+        """Run an existing match record with bot processes and finalize it."""
+        return await self._run_match_with_processes(match_id, bot_ids)
 
     async def run_loop(self):
         """Main matchmaker loop — runs as a background task."""

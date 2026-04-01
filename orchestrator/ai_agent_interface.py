@@ -19,11 +19,17 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth import get_current_user_or_apikey, get_db
-from models import BotDB, UserDB, SessionLocal
+from agent_auth import (
+    get_agent_registration_by_key,
+    get_bot_by_user_api_key,
+    mark_agent_registration_used,
+)
+from auth import _get_user_from_token, get_db, optional_security
+from models import BotDB, SessionLocal, UserDB
 from telemetry_hub import TelemetryHub, validate_action
 
 logger = logging.getLogger("clawquake.agent_interface")
@@ -81,6 +87,36 @@ def _require_owned_bot(db: Session, user: UserDB, bot_id: int) -> BotDB:
     return bot
 
 
+def _resolve_bot_access(
+    db: Session,
+    bot_id: int,
+    credentials: Optional[HTTPAuthorizationCredentials],
+    x_api_key: Optional[str],
+    x_agent_key: Optional[str],
+) -> BotDB:
+    if x_agent_key:
+        resolved = get_agent_registration_by_key(db, x_agent_key)
+        if not resolved:
+            raise HTTPException(status_code=401, detail="Invalid agent key")
+        registration, bot = resolved
+        if bot.id != bot_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        mark_agent_registration_used(db, registration)
+        return bot
+
+    if credentials and credentials.scheme.lower() == "bearer":
+        user = _get_user_from_token(credentials.credentials, db)
+        return _require_owned_bot(db, user, bot_id)
+
+    if x_api_key:
+        bot = get_bot_by_user_api_key(db, x_api_key, bot_id)
+        if bot:
+            return bot
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
 def _validate_internal_secret(x_internal_secret: str):
     expected = os.environ.get("INTERNAL_SECRET", "")
     if not expected or x_internal_secret != expected:
@@ -97,20 +133,24 @@ def _observe_for_bot(bot_id: int) -> Dict[str, Any]:
 @router.get("/observe")
 def observe_get(
     bot_id: int = Query(...),
-    user: UserDB = Depends(get_current_user_or_apikey),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_agent_key: Optional[str] = Header(default=None, alias="X-Agent-Key"),
     db: Session = Depends(get_db),
 ):
-    _require_owned_bot(db, user, bot_id)
+    _resolve_bot_access(db, bot_id, credentials, x_api_key, x_agent_key)
     return _observe_for_bot(bot_id)
 
 
 @router.post("/observe")
 def observe_post(
     bot_id: int = Query(...),
-    user: UserDB = Depends(get_current_user_or_apikey),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_agent_key: Optional[str] = Header(default=None, alias="X-Agent-Key"),
     db: Session = Depends(get_db),
 ):
-    _require_owned_bot(db, user, bot_id)
+    _resolve_bot_access(db, bot_id, credentials, x_api_key, x_agent_key)
     return _observe_for_bot(bot_id)
 
 
@@ -118,10 +158,12 @@ def observe_post(
 def act(
     action: ActionRequest,
     bot_id: int = Query(...),
-    user: UserDB = Depends(get_current_user_or_apikey),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_agent_key: Optional[str] = Header(default=None, alias="X-Agent-Key"),
     db: Session = Depends(get_db),
 ):
-    _require_owned_bot(db, user, bot_id)
+    _resolve_bot_access(db, bot_id, credentials, x_api_key, x_agent_key)
 
     action_name = action.action.strip()
     if not action_name:
@@ -162,19 +204,23 @@ def sync_runner(
 
 # ── WebSocket: External Agent Stream ─────────────────────────────
 
-def _auth_external_ws(db: Session, api_key: str, bot_id: int) -> Optional[BotDB]:
-    """Authenticate an external agent WebSocket connection via API key."""
-    from models import ApiKeyDB
-    key_row = db.query(ApiKeyDB).filter(
-        ApiKeyDB.key == api_key,
-        ApiKeyDB.is_active == True,
-    ).first()
-    if not key_row:
-        return None
-    bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
-    if not bot or bot.owner_id != key_row.user_id:
-        return None
-    return bot
+def _auth_external_ws(
+    db: Session,
+    bot_id: int,
+    agent_key: str = "",
+    api_key: str = "",
+) -> Optional[BotDB]:
+    """Authenticate an external agent WebSocket connection."""
+    if agent_key:
+        resolved = get_agent_registration_by_key(db, agent_key)
+        if not resolved:
+            return None
+        registration, bot = resolved
+        if bot.id != bot_id:
+            return None
+        mark_agent_registration_used(db, registration)
+        return bot
+    return get_bot_by_user_api_key(db, api_key, bot_id)
 
 
 @router.websocket("/stream")
@@ -182,6 +228,7 @@ async def agent_stream(
     websocket: WebSocket,
     bot_id: int = Query(...),
     api_key: str = Query(""),
+    agent_key: str = Query(""),
 ):
     """Bidirectional WebSocket for external AI agents.
 
@@ -196,7 +243,7 @@ async def agent_stream(
     # Auth
     db = SessionLocal()
     try:
-        bot = _auth_external_ws(db, api_key, bot_id)
+        bot = _auth_external_ws(db, bot_id=bot_id, api_key=api_key, agent_key=agent_key)
     finally:
         db.close()
 

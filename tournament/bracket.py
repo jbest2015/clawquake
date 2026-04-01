@@ -29,9 +29,14 @@ class TournamentBracket:
     def __init__(self, db_session):
         self.db = db_session
         
-    def create_tournament(self, name, format="single_elim"):
+    def create_tournament(self, name, format="single_elim", created_by_user_id=None):
         """Create a new pending tournament."""
-        t = TournamentDB(name=name, format=format, status="pending")
+        t = TournamentDB(
+            name=name,
+            format=format,
+            created_by_user_id=created_by_user_id,
+            status="pending",
+        )
         self.db.add(t)
         self.db.commit()
         return t
@@ -97,6 +102,7 @@ class TournamentBracket:
         pairings = self._generate_pairings(ordered_participants, bracket_size)
         
         # Create Round 1 matches
+        bye_advancements = []
         for i, (p1, p2) in enumerate(pairings):
             match = TournamentMatchDB(
                 tournament_id=tournament_id,
@@ -104,13 +110,15 @@ class TournamentBracket:
                 match_num=i + 1,
                 player1_bot_id=p1.bot_id if p1 else None,
                 player2_bot_id=p2.bot_id if p2 else None,
-                winner_bot_id=p1.bot_id if not p2 else (p2.bot_id if not p1 else None)
+                winner_bot_id=None
             )
             # Handle byes immediately
             if not p2 and p1:
                 match.winner_bot_id = p1.bot_id
+                bye_advancements.append((match, p1.bot_id))
             elif not p1 and p2: # Should not happen with standard seeding
                 match.winner_bot_id = p2.bot_id
+                bye_advancements.append((match, p2.bot_id))
                 
             self.db.add(match)
             
@@ -120,6 +128,9 @@ class TournamentBracket:
         self.db.commit()
         
         self._generate_future_rounds(tournament_id, bracket_size)
+        for match, winner_bot_id in bye_advancements:
+            self._advance_winner(match, winner_bot_id)
+        self._refresh_current_round(tournament_id)
         return True
 
     def _generate_pairings(self, participants, bracket_size):
@@ -200,27 +211,17 @@ class TournamentBracket:
             tournament_id=tournament_id, id=match_id
         ).first()
         
-        if not match or match.winner_bot_id:
+        if not match:
             return None # Already finished or invalid
+
+        if match.winner_bot_id and match.winner_bot_id != winner_bot_id:
+            return None
 
         match.winner_bot_id = winner_bot_id
         self.db.commit()
-        
-        # Advance to next match
-        if match.next_match_id:
-            next_match = self.db.query(TournamentMatchDB).get(match.next_match_id)
-            if not next_match.player1_bot_id:
-                next_match.player1_bot_id = winner_bot_id
-            else:
-                next_match.player2_bot_id = winner_bot_id
-            self.db.commit()
-        else:
-            # No next match -> Tournament Winner!
-            t = self.db.query(TournamentDB).get(tournament_id)
-            t.winner_bot_id = winner_bot_id
-            t.status = "completed"
-            t.ended_at = datetime.utcnow()
-            self.db.commit()
+        self._advance_winner(match, winner_bot_id)
+        self._refresh_current_round(tournament_id)
+        return match.next_match_id
 
     def get_bracket(self, tournament_id):
         """Return full bracket data."""
@@ -236,6 +237,58 @@ class TournamentBracket:
             rounds[m.round_num].append(m)
             
         return rounds
+
+    def get_ready_matches(self, tournament_id):
+        """Tournament matches ready to launch as real game matches."""
+        return (
+            self.db.query(TournamentMatchDB)
+            .filter(
+                TournamentMatchDB.tournament_id == tournament_id,
+                TournamentMatchDB.player1_bot_id.isnot(None),
+                TournamentMatchDB.player2_bot_id.isnot(None),
+                TournamentMatchDB.winner_bot_id.is_(None),
+                TournamentMatchDB.game_match_id.is_(None),
+            )
+            .order_by(TournamentMatchDB.round_num.asc(), TournamentMatchDB.match_num.asc())
+            .all()
+        )
+
+    def _advance_winner(self, match, winner_bot_id):
+        """Advance a completed match winner to the next slot or finish the tournament."""
+        if match.next_match_id:
+            next_match = self.db.query(TournamentMatchDB).get(match.next_match_id)
+            if not next_match.player1_bot_id:
+                next_match.player1_bot_id = winner_bot_id
+            elif not next_match.player2_bot_id:
+                next_match.player2_bot_id = winner_bot_id
+            self.db.commit()
+            return
+
+        t = self.db.query(TournamentDB).get(match.tournament_id)
+        t.winner_bot_id = winner_bot_id
+        t.status = "completed"
+        t.ended_at = datetime.utcnow()
+        self.db.commit()
+
+    def _refresh_current_round(self, tournament_id):
+        """Track the lowest unfinished round as the current round."""
+        t = self.db.query(TournamentDB).get(tournament_id)
+        if not t:
+            return
+        pending = (
+            self.db.query(TournamentMatchDB)
+            .filter(
+                TournamentMatchDB.tournament_id == tournament_id,
+                TournamentMatchDB.winner_bot_id.is_(None),
+            )
+            .order_by(TournamentMatchDB.round_num.asc())
+            .first()
+        )
+        if pending:
+            t.current_round = pending.round_num
+        elif t.winner_bot_id:
+            t.current_round = 0
+        self.db.commit()
 
 # Helper for bracket seeding order
 def next_level(matches):
