@@ -13,8 +13,10 @@ class TestResultReporter(unittest.TestCase):
     def test_report_match_success(self, mock_urlopen):
         match_id = "test-match-123"
         bot_id = 1
-        stats = {"kills": 10, "deaths": 2}
-        
+        bot_name = "TestBot"
+        duration = 120.0
+        stats = {"kills": 10, "deaths": 2, "strategy_name": "default", "strategy_version": "1.0"}
+
         # Configure mock response
         mock_response = Mock()
         mock_response.status = 200
@@ -22,32 +24,35 @@ class TestResultReporter(unittest.TestCase):
         mock_response.__exit__ = Mock(return_value=None)
         mock_urlopen.return_value = mock_response
 
-        ok = self.reporter.report_match_result(match_id, bot_id, stats)
-        
+        ok = self.reporter.report_match_result(match_id, bot_id, bot_name, duration, stats)
+
         self.assertTrue(ok)
-        
+
         # Verify request
         args, kwargs = mock_urlopen.call_args
         req = args[0]
-        
+
         self.assertEqual(req.full_url, "http://localhost:8000/api/internal/match/report")
-        # Verify headers (case-insensitive check)
         headers = {k.lower(): v for k, v in req.header_items()}
         self.assertEqual(headers.get('x-internal-secret'), 'my_secret')
         self.assertEqual(req.get_method(), 'POST')
-        
-        # Check payload
+
+        # Check payload matches MatchResultReport schema
         payload = json.loads(req.data.decode('utf-8'))
         self.assertEqual(payload['match_id'], match_id)
         self.assertEqual(payload['bot_id'], bot_id)
-        self.assertEqual(payload['stats'], stats)
+        self.assertEqual(payload['bot_name'], bot_name)
+        self.assertEqual(payload['kills'], 10)
+        self.assertEqual(payload['deaths'], 2)
+        self.assertEqual(payload['duration_seconds'], 120.0)
+        self.assertEqual(payload['strategy_name'], 'default')
 
     @patch('urllib.request.urlopen')
     def test_report_match_connection_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
         
-        ok = self.reporter.report_match_result("mid", 1, {})
+        ok = self.reporter.report_match_result("mid", 1, "Bot", 60.0, {})
         self.assertFalse(ok)
 
     @patch('urllib.request.urlopen')
@@ -55,8 +60,8 @@ class TestResultReporter(unittest.TestCase):
         import urllib.error
         err = urllib.error.HTTPError("url", 403, "Forbidden", {}, None)
         mock_urlopen.side_effect = err
-        
-        ok = self.reporter.report_match_result("mid", 1, {})
+
+        ok = self.reporter.report_match_result("mid", 1, "Bot", 60.0, {})
         self.assertFalse(ok)
 
 if __name__ == '__main__':
