@@ -72,11 +72,12 @@ def _get_user_from_token(token: str, db: Session) -> UserDB:
 def get_current_user_or_apikey(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
     x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_agent_key: Optional[str] = Header(default=None, alias="X-Agent-Key"),
     db: Session = Depends(get_db),
 ) -> UserDB:
     """
-    Authenticate with either a Bearer JWT token or an X-API-Key header.
-    Returns the owning user in both cases.
+    Authenticate with Bearer JWT, X-API-Key, or X-Agent-Key header.
+    Returns the owning user in all cases.
     """
     if credentials and credentials.scheme.lower() == "bearer":
         return _get_user_from_token(credentials.credentials, db)
@@ -101,6 +102,18 @@ def get_current_user_or_apikey(
 
         key.last_used = datetime.utcnow()
         db.commit()
+        return user
+
+    if x_agent_key:
+        from agent_auth import get_agent_registration_by_key, mark_agent_registration_used
+        resolved = get_agent_registration_by_key(db, x_agent_key)
+        if not resolved:
+            raise HTTPException(status_code=401, detail="Invalid agent key")
+        registration, bot = resolved
+        mark_agent_registration_used(db, registration)
+        user = db.query(UserDB).filter(UserDB.id == registration.created_by_user_id).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
         return user
 
     raise HTTPException(
