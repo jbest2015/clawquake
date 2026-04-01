@@ -1,11 +1,11 @@
 """
-Codex Hunter strategy: target lock, distance-aware combat, and anti-fall behavior.
+Codex Hunter strategy: pressure-first combat with safer traversal and pickups.
 """
 
 import random
 
 STRATEGY_NAME = "Codex Hunter"
-STRATEGY_VERSION = "2.1"
+STRATEGY_VERSION = "2.2"
 
 ANTI_GRAVITY_TAUNTS = [
     "AntiGravityBot, your feet are touching the ground now.",
@@ -30,6 +30,7 @@ def on_spawn(ctx):
     ctx.tick = 0
     ctx.target_client_num = None
     ctx.target_stale_ticks = 0
+    ctx.target_memory = {}
     ctx.strafe_dir = 1
     ctx.strafe_switch_in = random.randint(8, 18)
     ctx.taunt_cooldown = 140
@@ -40,6 +41,49 @@ def on_spawn(ctx):
     ctx.explore_phase = 0
     ctx.explore_ticks = 0
     ctx.location_ping_cooldown = 220
+    ctx.retreat_ticks = 0
+    ctx.pickup_lock = None
+    ctx.pickup_lock_ticks = 0
+
+
+def _remember_target(target, ctx):
+    client_num = target.get("client_num")
+    if client_num is None:
+        return (0.0, 0.0, 0.0)
+
+    position = target["position"]
+    prior = ctx.target_memory.get(client_num)
+    ctx.target_memory[client_num] = {
+        "position": tuple(position),
+        "tick": ctx.tick,
+    }
+
+    if not prior:
+        return (0.0, 0.0, 0.0)
+
+    dt = max(1, ctx.tick - prior["tick"])
+    old = prior["position"]
+    return (
+        (position[0] - old[0]) / dt,
+        (position[1] - old[1]) / dt,
+        (position[2] - old[2]) / dt,
+    )
+
+
+def _lead_position(target, distance, weapon_id, velocity):
+    position = target["position"]
+    z_offset = 14.0 if distance > 350 else 10.0
+
+    if weapon_id in (5, 8):
+        travel_ticks = min(distance / 900.0, 1.2)
+    else:
+        travel_ticks = 0.0
+
+    return (
+        position[0] + velocity[0] * travel_ticks,
+        position[1] + velocity[1] * travel_ticks,
+        position[2] + velocity[2] * travel_ticks + z_offset,
+    )
 
 
 def _choose_target(game, ctx):
@@ -49,30 +93,37 @@ def _choose_target(game, ctx):
         ctx.target_stale_ticks = 0
         return None
 
-    # Keep lock on previous target briefly to reduce thrashing.
     if ctx.target_client_num is not None:
-        for p in players:
-            if p.get("client_num") == ctx.target_client_num:
+        for player in players:
+            if player.get("client_num") == ctx.target_client_num:
                 ctx.target_stale_ticks = 0
-                return p
+                return player
         ctx.target_stale_ticks += 1
         if ctx.target_stale_ticks < 10:
             return None
 
-    target = min(players, key=lambda p: game.distance_to(p["position"]))
+    def priority(player):
+        name = (player.get("name") or "").lower()
+        return ("claudebot" not in name, game.distance_to(player["position"]))
+
+    target = min(players, key=priority)
     ctx.target_client_num = target.get("client_num")
     ctx.target_stale_ticks = 0
     return target
 
 
-def _desired_weapon(distance):
-    if distance > 1300:
-        return 7  # railgun
+def _desired_weapon(distance, health, retreating):
+    if retreating and distance > 350:
+        return 7
+    if distance > 1200:
+        return 7
     if distance > 700:
-        return 2  # machine gun
-    if distance > 260:
-        return 5  # rocket launcher
-    return 3      # shotgun
+        return 2
+    if distance > 320:
+        return 6
+    if distance > 190 and health > 35:
+        return 5
+    return 3
 
 
 def _pick_taunt(name):
@@ -84,6 +135,77 @@ def _pick_taunt(name):
     return random.choice(GENERIC_TAUNTS)
 
 
+def _best_pickup(game, ctx, health):
+    items = getattr(game, "items", []) or []
+    if not items:
+        ctx.pickup_lock = None
+        ctx.pickup_lock_ticks = 0
+        return None
+
+    priorities = []
+    for item in items:
+        item_type = item.get("type")
+        subtype = item.get("subtype", "")
+        score = 0.0
+
+        if item_type == "health":
+            if health < 35:
+                score = 240.0 + item.get("value", 0)
+            elif health < 70:
+                score = 140.0 + item.get("value", 0)
+            elif "mega" in subtype:
+                score = 95.0
+        elif item_type == "armor":
+            score = 110.0 if health < 80 else 70.0
+            if "red" in subtype:
+                score += 35.0
+        elif item_type == "weapon":
+            weapon_bonus = {
+                "rocket": 110.0,
+                "lightning": 105.0,
+                "railgun": 100.0,
+                "plasma": 80.0,
+                "shotgun": 60.0,
+            }
+            score = weapon_bonus.get(subtype, 35.0)
+        elif item_type == "ammo" and health < 90:
+            score = 20.0
+
+        if score <= 0:
+            continue
+
+        distance = game.distance_to(item["position"])
+        priorities.append((score - distance / 18.0, distance, item))
+
+    if not priorities:
+        ctx.pickup_lock = None
+        ctx.pickup_lock_ticks = 0
+        return None
+
+    priorities.sort(key=lambda entry: (-entry[0], entry[1]))
+    best_item = priorities[0][2]
+    entity_num = best_item.get("entity_num")
+
+    if ctx.pickup_lock == entity_num and ctx.pickup_lock_ticks > 0:
+        ctx.pickup_lock_ticks -= 1
+    else:
+        ctx.pickup_lock = entity_num
+        ctx.pickup_lock_ticks = 18
+
+    return best_item
+
+
+def _move_to(actions, game, target_pos, aggressive=True):
+    actions.append(f"aim_at {target_pos[0]} {target_pos[1]} {target_pos[2]}")
+    actions.append("move_forward")
+    if aggressive and game.distance_to(target_pos) > 420 and random.random() < 0.18:
+        actions.append("move_forward")
+
+    my_pos = game.my_position
+    if my_pos and target_pos[2] > my_pos[2] + 24 and random.random() < 0.35:
+        actions.append("jump")
+
+
 async def tick(bot, game, ctx):
     actions = []
     ctx.tick += 1
@@ -93,21 +215,40 @@ async def tick(bot, game, ctx):
         ctx.recent_damage_ticks = 24
     ctx.last_health = health
     ctx.recent_damage_ticks = max(0, ctx.recent_damage_ticks - 1)
+    ctx.retreat_ticks = max(0, ctx.retreat_ticks - 1)
+
+    if game.am_i_stuck:
+        ctx.strafe_dir *= -1
+        actions.append("jump")
+        actions.append("move_left" if ctx.strafe_dir > 0 else "move_right")
+        actions.append(f"turn_right {random.randint(24, 56)}")
+        return actions
 
     velocity = game.my_velocity
     vz = float(velocity[2]) if velocity else 0.0
-    if vz < -220.0:
+    if game.am_i_falling or vz < -220.0:
         ctx.fall_guard_ticks = 8
     else:
         ctx.fall_guard_ticks = max(0, ctx.fall_guard_ticks - 1)
 
     if ctx.fall_guard_ticks > 0:
-        # Emergency recovery: stop forward commits and stabilize.
         actions.append("move_back")
         actions.append("move_left" if ctx.strafe_dir > 0 else "move_right")
-        if random.random() < 0.2:
+        if random.random() < 0.35:
+            actions.append("jump")
+        if random.random() < 0.3:
             actions.append(f"turn_right {random.randint(8, 20)}")
         return actions
+
+    pickup = _best_pickup(game, ctx, health)
+    should_retreat = health < 35 or (health < 55 and ctx.recent_damage_ticks > 0)
+
+    if should_retreat:
+        ctx.retreat_ticks = max(ctx.retreat_ticks, 18)
+        if pickup and pickup.get("type") in {"health", "armor"}:
+            _move_to(actions, game, pickup["position"], aggressive=False)
+            actions.append("move_left" if ctx.strafe_dir > 0 else "move_right")
+            return actions
 
     target = _choose_target(game, ctx)
 
@@ -115,53 +256,69 @@ async def tick(bot, game, ctx):
         pos = target["position"]
         name = target.get("name", "")
         dist = game.distance_to(pos)
-        actions.append(f"aim_at {pos[0]} {pos[1]} {pos[2]}")
+        retreating = ctx.retreat_ticks > 0
+        weapon_choice = _desired_weapon(dist, health, retreating)
+        target_velocity = _remember_target(target, ctx)
+        lead = _lead_position(target, dist, weapon_choice, target_velocity)
+        actions.append(f"aim_at {lead[0]} {lead[1]} {lead[2]}")
 
-        # Distance management.
         if dist > 1400:
             actions.append("move_forward")
             actions.append("move_forward")
-        elif dist > 900:
+        elif retreating:
+            if dist < 700:
+                actions.append("move_back")
+        elif dist > 820:
             actions.append("move_forward")
-        elif dist < 220:
+        elif dist < 180:
             actions.append("move_back")
-        elif random.random() < 0.55:
+        elif dist < 320:
+            if random.random() < 0.45:
+                actions.append("move_back")
+        elif random.random() < 0.65:
             actions.append("move_forward")
 
-        # Weapon selection with cooldown to avoid thrashing.
         ctx.weapon_cooldown = max(0, ctx.weapon_cooldown - 1)
         if ctx.weapon_cooldown == 0:
-            actions.append(f"weapon {_desired_weapon(dist)}")
+            actions.append(f"weapon {weapon_choice}")
             ctx.weapon_cooldown = 12
 
-        # Circle pressure with periodic strafe inversion.
         ctx.strafe_switch_in -= 1
         if ctx.strafe_switch_in <= 0:
             ctx.strafe_dir *= -1
-            ctx.strafe_switch_in = random.randint(8, 18)
+            if retreating or ctx.recent_damage_ticks > 0:
+                ctx.strafe_switch_in = random.randint(5, 10)
+            else:
+                ctx.strafe_switch_in = random.randint(8, 18)
         actions.append("move_left" if ctx.strafe_dir > 0 else "move_right")
 
-        if dist < 1400:
+        if dist < 1500:
             actions.append("attack")
 
-        if dist < 500 and ctx.recent_damage_ticks > 0 and random.random() < 0.2:
+        if dist < 480 and ctx.recent_damage_ticks > 0 and random.random() < 0.16:
             actions.append("jump")
 
-        # Small turn jitter makes aim tracks less linear.
+        if pickup and not retreating and health < 80 and dist > 900:
+            _move_to(actions, game, pickup["position"], aggressive=False)
+
         if random.random() < 0.08:
             if ctx.strafe_dir > 0:
                 actions.append(f"turn_left {random.randint(6, 16)}")
             else:
                 actions.append(f"turn_right {random.randint(6, 16)}")
 
-        # Controlled chat pressure.
         ctx.taunt_cooldown = max(0, ctx.taunt_cooldown - 1)
         if ctx.taunt_cooldown == 0 and random.random() < 0.05:
             actions.append(f"say {_pick_taunt(name)}")
             ctx.taunt_cooldown = 220
         return actions
 
-    # Exploration mode: move toward map center so humans can find/fight us quickly.
+    if pickup and pickup.get("type") in {"health", "armor", "weapon"}:
+        _move_to(actions, game, pickup["position"], aggressive=False)
+        if random.random() < 0.2:
+            actions.append("move_left" if ctx.strafe_dir > 0 else "move_right")
+        return actions
+
     ctx.explore_ticks += 1
     if ctx.explore_ticks >= 24:
         ctx.explore_ticks = 0
@@ -169,7 +326,6 @@ async def tick(bot, game, ctx):
 
     my = game.my_position
     if my and (abs(my[0]) > 600 or abs(my[1]) > 600):
-        # Pull toward central lanes first.
         actions.append("aim_at 0 0 128")
         actions.append("move_forward")
         if random.random() < 0.2:
@@ -184,11 +340,12 @@ async def tick(bot, game, ctx):
         if random.random() < 0.3:
             ctx.strafe_dir *= -1
 
-    # Periodic location callout while searching.
     ctx.location_ping_cooldown = max(0, ctx.location_ping_cooldown - 1)
     if ctx.location_ping_cooldown == 0 and random.random() < 0.25:
         if my:
-            actions.append(f"say CodexBot hunting near ({int(my[0])}, {int(my[1])}, {int(my[2])})")
+            actions.append(
+                f"say CodexBot hunting near ({int(my[0])}, {int(my[1])}, {int(my[2])})"
+            )
         else:
             actions.append("say CodexBot hunting mid.")
         ctx.location_ping_cooldown = 280

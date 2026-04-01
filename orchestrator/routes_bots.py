@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from auth import get_db, get_current_user_or_apikey
-from models import BotDB, BotRegister, BotResponse, UserDB
+from models import BotDB, BotRegister, BotResponse, BotUpdate, UserDB
 
 router = APIRouter(tags=["bots"])
 
@@ -23,6 +23,10 @@ def _list_strategies() -> list[str]:
         f[:-3] for f in os.listdir(STRATEGIES_DIR)
         if f.endswith(".py") and not f.startswith("_")
     )
+
+
+def _normalize_strategy_name(strategy: str) -> str:
+    return strategy.strip().lower().replace(" ", "_")
 
 
 @router.get("/api/strategies")
@@ -45,7 +49,7 @@ def register_bot(
         raise HTTPException(status_code=400, detail="Bot name already taken")
 
     # Validate strategy
-    strategy = payload.strategy.strip().lower().replace(" ", "_")
+    strategy = _normalize_strategy_name(payload.strategy)
     available = _list_strategies()
     if strategy not in available:
         raise HTTPException(
@@ -107,6 +111,43 @@ def bot_details(
         raise HTTPException(status_code=404, detail="Bot not found")
     if bot.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    return BotResponse(
+        id=bot.id,
+        name=bot.name,
+        strategy=bot.strategy or "default",
+        elo=bot.elo,
+        wins=bot.wins,
+        losses=bot.losses,
+        kills=bot.kills,
+        deaths=bot.deaths,
+    )
+
+
+@router.patch("/api/bots/{bot_id}", response_model=BotResponse)
+def update_bot(
+    bot_id: int,
+    payload: BotUpdate,
+    user: UserDB = Depends(get_current_user_or_apikey),
+    db: Session = Depends(get_db),
+):
+    bot = db.query(BotDB).filter(BotDB.id == bot_id).first()
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    if bot.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    strategy = _normalize_strategy_name(payload.strategy)
+    available = _list_strategies()
+    if strategy not in available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown strategy '{strategy}'. Available: {available}",
+        )
+
+    bot.strategy = strategy
+    db.commit()
+    db.refresh(bot)
 
     return BotResponse(
         id=bot.id,

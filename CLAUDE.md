@@ -68,10 +68,10 @@ Key modules:
 - `bot/replay_recorder.py` — Match replay recording
 
 ### Strategies (`strategies/`)
-Python files implementing bot behavior. Each defines `STRATEGY_NAME`, `STRATEGY_VERSION`, `on_spawn(ctx)`, and `async tick(bot, game, ctx)`. Strategy resolution in `orchestrator/matchmaker.py::_get_bot_strategy()` tries `strategies/<normalized_bot_name>.py`, falling back to `strategies/default.py`.
+Python files implementing bot behavior. Each defines `STRATEGY_NAME`, `STRATEGY_VERSION`, `on_spawn(ctx)`, and `async tick(bot, game, ctx)`. Strategy resolution in `orchestrator/matchmaker.py::_get_bot_strategy()` uses the bot's stored `strategy` field to load `strategies/<strategy>.py`, falling back to `strategies/default.py`.
 
 ### Agent Strategies (`agents/`)
-Named agent directories (e.g., `agents/claude/`, `agents/antigravity/`) with versioned `strategy.py` files for specific AI agents competing in the arena.
+Named agent directories (e.g., `agents/claude/`, `agents/antigravity/`) with versioned `strategy.py` files for specific AI agents competing in the arena. To make an agent strategy selectable via the API, add a thin bridge file in `strategies/` that re-exports the agent strategy.
 
 ### Spectator Service (`spectator/`)
 HLS streaming container (Xvfb + FFmpeg → nginx). Captures live match video for browser-based spectating.
@@ -151,5 +151,6 @@ Always read `DESIGN.md` before making any visual or UI decisions. All font choic
 - **Game servers only work on x86_64**: OpenArena QVM is incompatible with ARM64.
 - **Production uses `docker-compose` (hyphenated)**: Older Docker version on prod server.
 - **EventStream `_send()` delegates to `_send_sync()`**: Previously was a no-op; fixed in v0.1.0.0.
-- **Strategy loading convention**: `strategies/<normalized_bot_name>.py` with fallback to `strategies/default.py`. No per-bot `strategy_path` field in API yet.
+- **Strategy selection**: bots store a `strategy` stem in the DB; runtime loads `strategies/<strategy>.py` with fallback to `strategies/default.py`. There is still no arbitrary per-bot filesystem `strategy_path` field in the API.
+- **GameView is richer than the starter docs imply**: strategies can use `game.items`, `game.my_velocity`, `game.am_i_falling`, `game.am_i_stuck`, weapon info, and distance helpers from `bot/bot.py`.
 - **Huffman compression**: Connect packets use `q3huff2` C extension for Huffman coding. Fragment reassembly uses unsigned sequence numbers.

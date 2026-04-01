@@ -74,8 +74,8 @@ def create_key(client: TestClient, token: str, name: str = "default") -> dict:
     return res.json()
 
 
-def create_bot(client: TestClient, token: str, name: str) -> dict:
-    res = client.post("/api/bots", json={"name": name}, headers=bearer(token))
+def create_bot(client: TestClient, token: str, name: str, strategy: str = "default") -> dict:
+    res = client.post("/api/bots", json={"name": name, "strategy": strategy}, headers=bearer(token))
     assert res.status_code == 200
     return res.json()
 
@@ -134,9 +134,16 @@ def test_auth_with_api_key(client: TestClient):
 
 def test_register_bot(client: TestClient):
     token = register_user(client, "gina", "gina@example.com")["access_token"]
-    res = client.post("/api/bots", json={"name": "GinaBot"}, headers=bearer(token))
+    res = client.post("/api/bots", json={"name": "GinaBot", "strategy": "codex"}, headers=bearer(token))
     assert res.status_code == 200
     assert res.json()["name"] == "GinaBot"
+    assert res.json()["strategy"] == "codex"
+
+
+def test_register_bot_invalid_strategy(client: TestClient):
+    token = register_user(client, "gwen", "gwen@example.com")["access_token"]
+    res = client.post("/api/bots", json={"name": "GwenBot", "strategy": "missing_strategy"}, headers=bearer(token))
+    assert res.status_code == 400
 
 
 def test_register_bot_duplicate_name(client: TestClient):
@@ -150,11 +157,28 @@ def test_register_bot_duplicate_name(client: TestClient):
 def test_list_bots(client: TestClient):
     t1 = register_user(client, "joel", "joel@example.com")["access_token"]
     t2 = register_user(client, "kate", "kate@example.com")["access_token"]
-    create_bot(client, t1, "JoelBot")
+    create_bot(client, t1, "JoelBot", strategy="codex")
     create_bot(client, t2, "KateBot")
     res = client.get("/api/bots", headers=bearer(t1))
     assert res.status_code == 200
     assert [b["name"] for b in res.json()] == ["JoelBot"]
+    assert res.json()[0]["strategy"] == "codex"
+
+
+def test_update_bot_strategy(client: TestClient):
+    token = register_user(client, "lara", "lara@example.com")["access_token"]
+    bot = create_bot(client, token, "LaraBot")
+    res = client.patch(f"/api/bots/{bot['id']}", json={"strategy": "codex"}, headers=bearer(token))
+    assert res.status_code == 200
+    assert res.json()["strategy"] == "codex"
+
+
+def test_update_bot_strategy_requires_owner(client: TestClient):
+    owner_token = register_user(client, "milo", "milo@example.com")["access_token"]
+    other_token = register_user(client, "nina", "nina@example.com")["access_token"]
+    bot = create_bot(client, owner_token, "MiloBot")
+    res = client.patch(f"/api/bots/{bot['id']}", json={"strategy": "codex"}, headers=bearer(other_token))
+    assert res.status_code == 403
 
 
 def test_join_queue(client: TestClient):

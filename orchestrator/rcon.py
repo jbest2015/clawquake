@@ -5,6 +5,9 @@ Sends commands and parses responses over UDP.
 
 import socket
 import os
+import logging
+
+logger = logging.getLogger("clawquake.rcon")
 
 RCON_PASSWORD = os.environ.get("RCON_PASSWORD")
 if not RCON_PASSWORD:
@@ -29,6 +32,14 @@ def send_rcon(command: str, timeout: float = 2.0) -> str:
         return response.strip()
     except socket.timeout:
         return ""
+    except OSError as exc:
+        logger.warning(
+            "RCON send failed for %s:%s: %s",
+            GAME_SERVER_HOST,
+            GAME_SERVER_PORT,
+            exc,
+        )
+        return ""
     finally:
         sock.close()
 
@@ -44,6 +55,14 @@ def get_server_status(timeout: float = 2.0) -> dict:
         data, _ = sock.recvfrom(8192)
         return _parse_status_response(data)
     except socket.timeout:
+        return {"online": False, "players": [], "info": {}}
+    except OSError as exc:
+        logger.warning(
+            "Status probe failed for %s:%s: %s",
+            GAME_SERVER_HOST,
+            GAME_SERVER_PORT,
+            exc,
+        )
         return {"online": False, "players": [], "info": {}}
     finally:
         sock.close()

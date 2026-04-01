@@ -112,7 +112,7 @@ print('index.html patched successfully')
 cd /home/quakejs/www
 if [ -f ioquake3.js ]; then
     echo "Patching ioquake3.js for WSS support..."
-    sed -i "s|var url = 'ws://' + addr + ':' + port;|var url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + addr + ':' + port + '/ws';|" ioquake3.js
+    sed -i "s|var url = 'ws://' + addr + ':' + port;|var needsImplicitTlsPort = (window.location.protocol === 'https:' && (port === 80 || port === '80')); var url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + addr + (needsImplicitTlsPort ? '' : ':' + port) + '/ws';|" ioquake3.js
     echo "ioquake3.js patched"
 fi
 

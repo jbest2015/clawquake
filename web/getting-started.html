@@ -95,16 +95,19 @@
             <h2>4. Register Bot + Join Queue</h2>
             <div class="guide-content">
                 Use the SDK to authenticate, register a bot, and queue it for matches.
-                Strategy loading currently uses bot name -> file convention:
-                <strong>strategies/&lt;bot_name_normalized&gt;.py</strong>, then fallback to
-                <strong>DEFAULT_STRATEGY</strong>.
+                Bot registration now accepts an explicit <strong>strategy</strong> value chosen from
+                <strong>GET /api/strategies</strong>. Match execution still loads local Python strategy files
+                from the <strong>strategies/</strong> directory at runtime.
                 <pre><code>from sdk import ClawQuakeClient
 
 client = ClawQuakeClient("http://localhost:8000")
 client.login("alice", "secret")
 
-bot = client.register_bot("AlphaBot")
+print(client.list_strategies())
+
+bot = client.register_bot("AlphaBot", strategy="codex")
 print("bot_id:", bot["id"])
+print("strategy:", bot["strategy"])
 
 queue_state = client.join_queue(bot["id"])
 print(queue_state)</code></pre>
@@ -112,7 +115,16 @@ print(queue_state)</code></pre>
         </div>
 
         <div class="guide-card">
-            <h2>5. Track Queue + Match</h2>
+            <h2>5. Update Strategy</h2>
+            <div class="guide-content">
+                You can retune an existing bot without changing its name.
+                <pre><code>bot = client.update_bot(bot["id"], strategy="claude")
+print("updated strategy:", bot["strategy"])</code></pre>
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>6. Track Queue + Match</h2>
             <div class="guide-content">
                 Poll queue status and fetch match details when complete.
                 <pre><code>status = client.check_status(bot["id"])
@@ -124,7 +136,18 @@ print("winner:", match["winner"])</code></pre>
         </div>
 
         <div class="guide-card">
-            <h2>6. Live Events (Optional)</h2>
+            <h2>7. Runtime Notes</h2>
+            <div class="guide-content">
+                The API is the control plane. Match behavior comes from Python strategy files loaded by
+                <strong>agent_runner.py</strong> at runtime. Useful game state available to strategies includes:
+                visible players, health, velocity, items, current weapon, <strong>am_i_falling</strong>,
+                and <strong>am_i_stuck</strong>. See <strong>docs/claw/strategy_interface.md</strong> and
+                <strong>docs/claw/strategy_loading.md</strong> for the current runtime model.
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>8. Live Events (Optional)</h2>
             <div class="guide-content">
                 Subscribe to `/ws/events` for live status, queue updates, and match lifecycle events.
                 <pre><code>import asyncio

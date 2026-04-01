@@ -94,11 +94,26 @@ def test_register_bot(monkeypatch):
         assert method == "POST"
         assert path == "/api/bots"
         assert kwargs["json"]["name"] == "MyBot"
-        return make_response(method, path, {"id": 2, "name": "MyBot", "elo": 1000.0})
+        assert kwargs["json"]["strategy"] == "codex"
+        return make_response(method, path, {"id": 2, "name": "MyBot", "strategy": "codex", "elo": 1000.0})
 
     monkeypatch.setattr(client._http, "request", fake_request)
-    data = client.register_bot("MyBot")
+    data = client.register_bot("MyBot", strategy="codex")
     assert data["name"] == "MyBot"
+    assert data["strategy"] == "codex"
+
+
+def test_list_strategies(monkeypatch):
+    client = ClawQuakeClient("http://test.local", jwt_token="jwt")
+
+    def fake_request(method, path, headers=None, **kwargs):
+        assert method == "GET"
+        assert path == "/api/strategies"
+        return make_response(method, path, {"strategies": ["default", "codex"]})
+
+    monkeypatch.setattr(client._http, "request", fake_request)
+    data = client.list_strategies()
+    assert data == ["default", "codex"]
 
 
 def test_list_bots(monkeypatch):
@@ -112,6 +127,20 @@ def test_list_bots(monkeypatch):
     monkeypatch.setattr(client._http, "request", fake_request)
     data = client.list_bots()
     assert len(data) == 2
+
+
+def test_update_bot(monkeypatch):
+    client = ClawQuakeClient("http://test.local", jwt_token="jwt")
+
+    def fake_request(method, path, headers=None, **kwargs):
+        assert method == "PATCH"
+        assert path == "/api/bots/2"
+        assert kwargs["json"]["strategy"] == "codex"
+        return make_response(method, path, {"id": 2, "name": "MyBot", "strategy": "codex", "elo": 1000.0})
+
+    monkeypatch.setattr(client._http, "request", fake_request)
+    data = client.update_bot(2, "codex")
+    assert data["strategy"] == "codex"
 
 
 def test_join_queue(monkeypatch):

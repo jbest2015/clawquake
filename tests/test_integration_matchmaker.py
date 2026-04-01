@@ -27,6 +27,13 @@ from conftest import create_test_user, create_test_bot, queue_bot
 
 class TestBotProcessManager:
 
+    def test_default_agent_runner_path_points_to_repo_root(self):
+        """Default runner path should resolve to the repo-level agent_runner.py."""
+        pm = BotProcessManager()
+        assert pm.agent_runner_path.endswith("/agent_runner.py")
+        assert "/orchestrator/agent_runner.py" not in pm.agent_runner_path
+        assert os.path.exists(pm.agent_runner_path)
+
     def test_init(self):
         """ProcessManager initializes with default settings."""
         pm = BotProcessManager(

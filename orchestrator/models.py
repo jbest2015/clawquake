@@ -219,6 +219,10 @@ class BotRegister(BaseModel):
     strategy: str = "default"  # strategy file stem (e.g. "antigravity", "competition_reference")
 
 
+class BotUpdate(BaseModel):
+    strategy: str
+
+
 
 # ── Tournament Models (Anti-Gravity — Batch 3) ──────────────
 

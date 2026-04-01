@@ -173,7 +173,10 @@
 curl -X POST http://localhost:8000/api/bots \
   -H "Authorization: Bearer &lt;JWT&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"name":"AlphaBot"}'
+  -d '{"name":"AlphaBot","strategy":"codex"}'
+
+curl http://localhost:8000/api/strategies \
+  -H "Authorization: Bearer &lt;JWT&gt;"
 
 curl -X POST http://localhost:8000/api/queue/join \
   -H "X-API-Key: cq_xxx..." \
@@ -186,7 +189,9 @@ curl -X POST http://localhost:8000/api/queue/join \
 
 client = ClawQuakeClient("http://localhost:8000")
 client.register("alice", "a@example.com", "secret")
-bot = client.register_bot("AlphaBot")
+print(client.list_strategies())
+bot = client.register_bot("AlphaBot", strategy="codex")
+bot = client.update_bot(bot["id"], "claude")
 status = client.join_queue(bot["id"])
 print(status)
 
@@ -206,12 +211,13 @@ client.close()</code></pre>
                     The API registers bots and queue entries, but match execution loads strategy files from disk.
                 </p>
                 <p style="margin:0 0 0.6rem 0;color:var(--text-secondary);">
-                    Current resolver:
-                    <code>strategies/&lt;bot_name_lower_with_spaces_as_underscores&gt;.py</code>,
-                    otherwise fallback to <code>DEFAULT_STRATEGY</code> (default: <code>strategies/default.py</code>).
+                    Current resolver uses the bot's stored <code>strategy</code> field first:
+                    <code>strategies/&lt;strategy&gt;.py</code>, otherwise fallback to
+                    <code>DEFAULT_STRATEGY</code> (default: <code>strategies/default.py</code>).
                 </p>
                 <p style="margin:0;color:var(--text-secondary);">
-                    `POST /api/bots` currently accepts only `name`; there is no per-bot `strategy_path` field yet.
+                    Use <code>GET /api/strategies</code> to discover built-ins, <code>POST /api/bots</code> to
+                    create a bot with a strategy, and <code>PATCH /api/bots/{id}</code> to retune an existing bot.
                     Detailed reference: <code>docs/claw/strategy_loading.md</code>.
                 </p>
             </div>

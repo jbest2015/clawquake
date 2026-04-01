@@ -215,14 +215,31 @@ class ClawQuakeClient:
 
     # ── Bots ────────────────────────────────────────────────
 
-    def register_bot(self, name: str) -> dict:
-        return self._request("POST", "/api/bots", json={"name": name})
+    def list_strategies(self) -> list[str]:
+        data = self._request("GET", "/api/strategies")
+        if isinstance(data, dict):
+            return list(data.get("strategies", []))
+        return []
+
+    def register_bot(self, name: str, strategy: str = "default") -> dict:
+        return self._request(
+            "POST",
+            "/api/bots",
+            json={"name": name, "strategy": strategy},
+        )
 
     def list_bots(self) -> list[dict]:
         return self._request("GET", "/api/bots")
 
     def get_bot(self, bot_id: int) -> dict:
         return self._request("GET", f"/api/bots/{bot_id}")
+
+    def update_bot(self, bot_id: int, strategy: str) -> dict:
+        return self._request(
+            "PATCH",
+            f"/api/bots/{bot_id}",
+            json={"strategy": strategy},
+        )
 
     # ── Queue ───────────────────────────────────────────────
 

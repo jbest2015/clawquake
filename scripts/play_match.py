@@ -61,9 +61,12 @@ def main():
             
             if not target_bot:
                 print(f"Registering bot {bot_name}...")
-                target_bot = client.register_bot(bot_name)
+                target_bot = client.register_bot(bot_name, strategy=agent["strategy"])
             else:
-                print(f"Bot {bot_name} found (ID: {target_bot['id']})")
+                print(f"Bot {bot_name} found (ID: {target_bot['id']}) strategy={target_bot.get('strategy')}")
+                if target_bot.get("strategy") != agent["strategy"]:
+                    print(f"Updating strategy to {agent['strategy']}...")
+                    target_bot = client.update_bot(target_bot["id"], strategy=agent["strategy"])
                 
             # 4. Queue
             print(f"Joining queue...")

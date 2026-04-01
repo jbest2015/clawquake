@@ -30,6 +30,14 @@
             border-radius: 4px;
             color: var(--text-primary);
         }
+        .inline-form select,
+        .item-actions select {
+            padding: 0.7rem 1rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+        }
         .list {
             display: flex;
             flex-direction: column;
@@ -110,6 +118,7 @@
             <div class="card-body">
                 <div class="inline-form">
                     <input id="bot-name" type="text" placeholder="Enter new bot name">
+                    <select id="bot-strategy"></select>
                     <button class="btn btn-primary" onclick="registerBot()">Create</button>
                 </div>
                 <div class="error" id="bot-error"></div>
@@ -181,6 +190,34 @@
         }
 
         let bots = [];
+        let availableStrategies = [];
+
+        async function loadStrategies() {
+            const res = await fetch("/api/strategies", { headers: authHeaders() });
+            if (res.status === 401) {
+                logout();
+                return;
+            }
+
+            const data = await res.json();
+            availableStrategies = Array.isArray(data.strategies) ? data.strategies : [];
+            if (!availableStrategies.length) {
+                availableStrategies = ["default"];
+            }
+
+            const select = document.getElementById("bot-strategy");
+            select.innerHTML = availableStrategies.map(strategy => `
+                <option value="${escapeHtml(strategy)}">${escapeHtml(strategy)}</option>
+            `).join("");
+        }
+
+        function renderStrategyOptions(selected) {
+            return availableStrategies.map(strategy => `
+                <option value="${escapeHtml(strategy)}" ${strategy === selected ? "selected" : ""}>
+                    ${escapeHtml(strategy)}
+                </option>
+            `).join("");
+        }
 
         async function loadBots() {
             setError("bot-error", "");
@@ -205,9 +242,15 @@
                 <div class="list-item">
                     <div class="item-meta">
                         <div class="item-title">${escapeHtml(bot.name)}</div>
-                        <div class="item-subtitle">ELO ${Math.round(bot.elo)} | ${bot.wins}W/${bot.losses}L</div>
+                        <div class="item-subtitle">ELO ${Math.round(bot.elo)} | ${bot.wins}W/${bot.losses}L | strategy ${escapeHtml(bot.strategy || "default")}</div>
                     </div>
-                    <span class="status-pill">ID ${bot.id}</span>
+                    <div class="item-actions">
+                        <select id="strategy-${bot.id}">
+                            ${renderStrategyOptions(bot.strategy || "default")}
+                        </select>
+                        <button class="btn btn-outline" onclick="updateBotStrategy(${bot.id})">Save Strategy</button>
+                        <span class="status-pill">ID ${bot.id}</span>
+                    </div>
                 </div>
             `).join("");
 
@@ -228,7 +271,9 @@
 
         async function registerBot() {
             const input = document.getElementById("bot-name");
+            const strategyInput = document.getElementById("bot-strategy");
             const name = input.value.trim();
+            const strategy = strategyInput.value || "default";
             if (!name) {
                 setError("bot-error", "Bot name is required");
                 return;
@@ -237,7 +282,7 @@
             const res = await fetch("/api/bots", {
                 method: "POST",
                 headers: authHeaders(),
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ name, strategy }),
             });
             const data = await res.json();
             if (!res.ok) {
@@ -245,6 +290,23 @@
                 return;
             }
             input.value = "";
+            await loadBots();
+        }
+
+        async function updateBotStrategy(botId) {
+            const select = document.getElementById(`strategy-${botId}`);
+            const strategy = select.value || "default";
+            setError("bot-error", "");
+            const res = await fetch(`/api/bots/${botId}`, {
+                method: "PATCH",
+                headers: authHeaders(),
+                body: JSON.stringify({ strategy }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError("bot-error", data.detail || "Strategy update failed");
+                return;
+            }
             await loadBots();
         }
 
@@ -358,6 +420,7 @@
 
         async function init() {
             try {
+                await loadStrategies();
                 await loadBots();
                 await loadKeys();
                 for (const bot of bots) {

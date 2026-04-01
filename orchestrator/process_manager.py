@@ -19,9 +19,17 @@ logger = logging.getLogger("clawquake.process_manager")
 
 DEFAULT_MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "120"))
 PROCESS_TIMEOUT_BUFFER = 30  # extra seconds before force-kill
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_AGENT_RUNNER_CANDIDATES = [
+    os.path.join(_MODULE_DIR, "agent_runner.py"),
+    os.path.join(os.path.dirname(_MODULE_DIR), "agent_runner.py"),
+]
 AGENT_RUNNER_PATH = os.environ.get(
     "AGENT_RUNNER_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_runner.py"),
+    next(
+        (path for path in _AGENT_RUNNER_CANDIDATES if os.path.exists(path)),
+        _AGENT_RUNNER_CANDIDATES[0],
+    ),
 )
 
 
