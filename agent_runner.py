@@ -63,6 +63,89 @@ logger = logging.getLogger('clawquake.runner')
 RELOAD_CHECK_SECONDS = 5  # Check strategy file for changes every N seconds
 
 
+class TelemetryStreamer:
+    """Streams telemetry to the orchestrator over WebSocket and drains commands."""
+
+    def __init__(self, ws_url: str, bot_id: int, match_id):
+        self.ws_url = ws_url
+        self.bot_id = bot_id
+        self.match_id = match_id
+        self._ws = None
+        self._pending_commands: list[str] = []
+        self._connected = False
+
+    async def connect(self):
+        """Connect to the orchestrator's internal telemetry WebSocket."""
+        try:
+            import websockets
+            self._ws = await websockets.connect(self.ws_url)
+            self._connected = True
+            logger.info("Telemetry WS connected to orchestrator")
+        except Exception as e:
+            logger.warning(f"Telemetry WS connect failed (falling back to no-telemetry): {e}")
+            self._connected = False
+
+    async def send_telemetry(self, state: dict, tick: int):
+        """Send a telemetry frame to the orchestrator, drain pending commands."""
+        if not self._connected or not self._ws:
+            return
+        try:
+            frame = json.dumps({
+                "type": "telemetry",
+                "tick": tick,
+                "ts": time.time(),
+                "bot_id": self.bot_id,
+                "match_id": self.match_id,
+                "state": state,
+            })
+            await self._ws.send(frame)
+
+            # Non-blocking receive of command responses
+            try:
+                raw = await asyncio.wait_for(self._ws.recv(), timeout=0.005)
+                msg = json.loads(raw)
+                if msg.get("type") == "commands":
+                    for action in msg.get("actions", []):
+                        if isinstance(action, dict):
+                            self._pending_commands.append(action.get("action", ""))
+                        elif isinstance(action, str):
+                            self._pending_commands.append(action)
+            except (asyncio.TimeoutError, json.JSONDecodeError):
+                pass
+        except Exception as e:
+            logger.warning(f"Telemetry send failed: {e}")
+            self._connected = False
+
+    async def send_event(self, event_type: str, data: dict):
+        """Send an event frame to the orchestrator."""
+        if not self._connected or not self._ws:
+            return
+        try:
+            frame = json.dumps({
+                "type": "event",
+                "event_type": event_type,
+                "data": data,
+            })
+            await self._ws.send(frame)
+        except Exception:
+            pass
+
+    def drain_commands(self) -> list[str]:
+        """Return and clear pending commands from the orchestrator."""
+        cmds = self._pending_commands[:]
+        self._pending_commands.clear()
+        return cmds
+
+    async def close(self):
+        """Close the WebSocket connection."""
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
+            self._connected = False
+
+
 class MatchTracker:
     """Tracks kills, deaths, and match events during a session."""
 
@@ -133,6 +216,12 @@ async def run(args):
     if args.orchestrator_url and args.match_id and args.internal_secret:
         event_stream = EventStream(args.orchestrator_url, args.internal_secret, args.match_id)
 
+    # Setup telemetry streamer (WebSocket to orchestrator)
+    telemetry = None
+    if args.ws_url:
+        telemetry = TelemetryStreamer(args.ws_url, args.bot_id, args.match_id)
+        await telemetry.connect()
+
     # Replay Recorder
     replay = None
     if args.replay:
@@ -150,7 +239,9 @@ async def run(args):
         # Emit real-time event
         if event_stream:
             event_stream.emit_kill(killer, victim, weapon)
-            
+        if telemetry:
+            await telemetry.send_event('kill', {'killer': killer, 'victim': victim, 'weapon': weapon})
+
         # Record replay event
         if replay:
             replay.record_event('kill', {'killer': killer, 'victim': victim, 'weapon': weapon})
@@ -183,6 +274,16 @@ async def run(args):
                 agent.send_actions([
                     f"say Strategy updated to {strategy.name} v{strategy.version}!"
                 ])
+
+        # Stream telemetry to orchestrator via WebSocket
+        if telemetry:
+            state = game.to_dict() if hasattr(game, 'to_dict') else {}
+            await telemetry.send_telemetry(state, tracker.ticks)
+
+            # Inject commands from external agents
+            for cmd in telemetry.drain_commands():
+                if cmd:
+                    agent.send_actions([cmd])
 
         actions = await strategy.tick(bot_obj, game)
 
@@ -290,7 +391,10 @@ async def run(args):
         except Exception:
             pass
         task.cancel()
-        
+
+        if telemetry:
+            await telemetry.close()
+
         if replay:
             replay.save()
 
@@ -368,6 +472,8 @@ Examples:
                         help='Internal secret for reporting results')
     parser.add_argument('--replay', action='store_true',
                         help='Enable replay recording')
+    parser.add_argument('--ws-url', default=None,
+                        help='WebSocket URL for real-time telemetry streaming to orchestrator')
 
     args = parser.parse_args()
 

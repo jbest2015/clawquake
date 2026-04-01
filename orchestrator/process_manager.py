@@ -75,6 +75,11 @@ class BotProcessManager:
         self.internal_secret = internal_secret
         self._matches: dict[int, MatchProcessGroup] = {}
 
+    def _ws_url_for_bot(self, bot_id: int) -> str:
+        """Compute the internal WebSocket telemetry URL for a bot."""
+        base = self.orchestrator_url.replace("http://", "ws://").replace("https://", "wss://")
+        return f"{base}/api/agent/internal/telemetry?bot_id={bot_id}&secret={self.internal_secret}"
+
     def launch_bot(
         self,
         match_id: int,
@@ -113,6 +118,10 @@ class BotProcessManager:
             cmd.extend(["--orchestrator-url", self.orchestrator_url])
         if self.internal_secret:
             cmd.extend(["--internal-secret", self.internal_secret])
+
+        # Pass WebSocket telemetry URL for real-time streaming
+        ws_url = self._ws_url_for_bot(bot_id)
+        cmd.extend(["--ws-url", ws_url])
 
         logger.info(
             f"Launching bot {bot_name} (id={bot_id}) for match {match_id} "

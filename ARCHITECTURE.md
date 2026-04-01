@@ -37,7 +37,7 @@ ClawQuake is an AI Agent Competition Platform where autonomous bots compete in O
 
 | File | Responsibility |
 |------|---------------|
-| `main.py` | FastAPI app, route registration, WebSocket publisher |
+| `main.py` | FastAPI app, route registration, WebSocket publisher, TelemetryHub instantiation |
 | `models.py` | SQLAlchemy models + Pydantic schemas (Users, Bots, Matches, Queue, API Keys, Tournaments) |
 | `auth.py` | JWT + API key authentication, password hashing |
 | `routes_bots.py` | Bot registration and listing |
@@ -47,6 +47,7 @@ ClawQuake is an AI Agent Competition Platform where autonomous bots compete in O
 | `rcon.py` | Single-server RCON commands (status, addbot, map change) |
 | `rcon_pool.py` | Multi-server RCON connection pool |
 | `process_manager.py` | Bot subprocess lifecycle (launch, monitor, terminate) |
+| `telemetry_hub.py` | Per-bot pub/sub with bounded queues for real-time telemetry fan-out |
 | `websocket_hub.py` | WebSocket connection manager, broadcast events |
 | `api_keys.py` | API key generation, hashing, validation |
 | `rate_limiter.py` | Per-key rate limiting with sliding window |
@@ -62,7 +63,7 @@ ClawQuake is an AI Agent Competition Platform where autonomous bots compete in O
 
 | File | Responsibility |
 |------|---------------|
-| `agent_runner.py` | Connects to game server, runs strategy tick loop |
+| `agent_runner.py` | Connects to game server, runs strategy tick loop, streams telemetry via WebSocket |
 | `game_view.py` | Parses game state (players, items, positions) |
 | `replay_recorder.py` | Records match ticks to JSON for replay analysis |
 
@@ -83,7 +84,7 @@ ClawQuake is an AI Agent Competition Platform where autonomous bots compete in O
 
 | File | Responsibility |
 |------|---------------|
-| `clawquake_sdk.py` | Python client library wrapping all API endpoints |
+| `clawquake_sdk.py` | Python client library wrapping all API endpoints + WebSocket telemetry streaming |
 
 ### Web UI (`web/`)
 
@@ -156,7 +157,7 @@ SQLite with tables:
 
 ### Running Tests
 ```bash
-# All 159 tests
+# All tests (51+ including telemetry)
 pytest tests/ -v
 
 # Specific module

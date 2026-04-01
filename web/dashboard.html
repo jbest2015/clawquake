@@ -73,6 +73,37 @@
                 </div>
             </div>
 
+            <!-- Live Telemetry Panel (shown when a bot is selected) -->
+            <div class="card" id="telemetry-panel" style="display:none;">
+                <div class="card-header">
+                    <h3 id="telemetry-bot-name">Bot Telemetry</h3>
+                    <button class="btn btn-outline" style="padding:0.2rem 0.6rem;font-size:0.75rem;" onclick="closeTelemetry()">✕</button>
+                </div>
+                <div class="card-body telemetry-body" id="telemetry-body">
+                    <div class="telemetry-grid">
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">HEALTH</span>
+                            <span class="telemetry-value" id="telem-health">—</span>
+                        </div>
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">ARMOR</span>
+                            <span class="telemetry-value" id="telem-armor">—</span>
+                        </div>
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">WEAPON</span>
+                            <span class="telemetry-value" id="telem-weapon">—</span>
+                        </div>
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">POSITION</span>
+                            <span class="telemetry-value telemetry-mono" id="telem-position">—</span>
+                        </div>
+                    </div>
+                    <div class="telemetry-events" id="telem-events">
+                        <div class="empty-state" style="padding:0.5rem;">Waiting for telemetry...</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Leaderboard + Match History Tabs -->
             <div class="card">
                 <div class="tabs">
@@ -384,6 +415,8 @@
         }
 
         // ── Leaderboard ─────────────────────────────────────
+        let selectedBotId = null;
+
         async function loadLeaderboard() {
             try {
                 const res = await fetch('/api/leaderboard', { headers: authHeaders() });
@@ -397,7 +430,9 @@
                 }
 
                 el.innerHTML = data.map((bot, i) => `
-                    <div class="score-row">
+                    <div class="score-row score-row-clickable${selectedBotId === bot.id ? ' score-row-selected' : ''}"
+                         data-bot-id="${bot.id}" data-bot-name="${escapeHtml(bot.name)}"
+                         onclick="openTelemetry(${bot.id}, '${escapeHtml(bot.name).replace(/'/g, "\\'")}')">
                         <span class="rank">${i + 1}</span>
                         <span class="name">${escapeHtml(bot.name)}</span>
                         <span class="score">${Math.round(bot.elo)}</span>
@@ -436,6 +471,134 @@
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
             document.getElementById('tab-' + name).classList.add('active');
+        }
+
+        // ── Bot Telemetry Panel ──────────────────────────────
+        let telemSocket = null;
+        let telemPingTimer = null;
+        const telemEvents = [];  // ring buffer of recent events
+        const MAX_TELEM_EVENTS = 8;
+
+        function openTelemetry(botId, botName) {
+            // Toggle off if already selected
+            if (selectedBotId === botId) {
+                closeTelemetry();
+                return;
+            }
+            selectedBotId = botId;
+            document.getElementById('telemetry-bot-name').textContent = botName + ' — LIVE';
+            document.getElementById('telemetry-panel').style.display = '';
+            resetTelemetryDisplay();
+            connectTelemetry(botId);
+            // Re-render leaderboard to highlight selected row
+            loadLeaderboard();
+        }
+
+        function closeTelemetry() {
+            selectedBotId = null;
+            document.getElementById('telemetry-panel').style.display = 'none';
+            disconnectTelemetry();
+            loadLeaderboard();
+        }
+
+        function resetTelemetryDisplay() {
+            document.getElementById('telem-health').textContent = '—';
+            document.getElementById('telem-armor').textContent = '—';
+            document.getElementById('telem-weapon').textContent = '—';
+            document.getElementById('telem-position').textContent = '—';
+            document.getElementById('telem-events').innerHTML =
+                '<div class="empty-state" style="padding:0.5rem;">Waiting for telemetry...</div>';
+            telemEvents.length = 0;
+        }
+
+        function disconnectTelemetry() {
+            if (telemPingTimer) { clearInterval(telemPingTimer); telemPingTimer = null; }
+            if (telemSocket) {
+                try { telemSocket.close(); } catch (e) { }
+                telemSocket = null;
+            }
+        }
+
+        function connectTelemetry(botId) {
+            disconnectTelemetry();
+            const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            telemSocket = new WebSocket(`${wsProto}://${window.location.host}/ws/bot-telemetry/${botId}`);
+
+            telemSocket.onopen = () => {
+                telemPingTimer = setInterval(() => {
+                    if (telemSocket && telemSocket.readyState === WebSocket.OPEN) {
+                        telemSocket.send('ping');
+                    }
+                }, 15000);
+            };
+
+            telemSocket.onmessage = (evt) => {
+                try {
+                    const msg = JSON.parse(evt.data);
+                    if (msg.type === 'pong') return;
+                    if (msg.type === 'telemetry' || msg.type === 'state_snapshot') {
+                        renderTelemetryState(msg.state || msg);
+                    } else if (msg.type === 'event') {
+                        addTelemetryEvent(msg);
+                    } else if (msg.type === 'disconnected') {
+                        addTelemetryEvent({ event_type: 'disconnected', data: {} });
+                    }
+                } catch (e) { }
+            };
+
+            telemSocket.onclose = () => {
+                if (telemPingTimer) { clearInterval(telemPingTimer); telemPingTimer = null; }
+                // Reconnect if still selected
+                if (selectedBotId === botId) {
+                    setTimeout(() => {
+                        if (selectedBotId === botId) connectTelemetry(botId);
+                    }, 3000);
+                }
+            };
+
+            telemSocket.onerror = () => {
+                if (telemSocket) telemSocket.close();
+            };
+        }
+
+        function renderTelemetryState(state) {
+            const health = state.my_health ?? state.health ?? '—';
+            const armor = state.my_armor ?? state.armor ?? '—';
+            const weapon = state.my_weapon ?? state.weapon ?? '—';
+
+            document.getElementById('telem-health').textContent = health;
+            document.getElementById('telem-health').className =
+                'telemetry-value' + (typeof health === 'number' && health <= 25 ? ' telem-danger' : '');
+
+            document.getElementById('telem-armor').textContent = armor;
+            document.getElementById('telem-weapon').textContent =
+                typeof weapon === 'string' ? weapon.replace('WP_', '') : weapon;
+
+            const pos = state.my_position ?? state.position;
+            if (Array.isArray(pos) && pos.length >= 3) {
+                document.getElementById('telem-position').textContent =
+                    pos.map(v => Math.round(v)).join(', ');
+            }
+        }
+
+        function addTelemetryEvent(msg) {
+            const eventType = msg.event_type || msg.type || 'unknown';
+            const data = msg.data || {};
+            let text = eventType;
+            if (eventType === 'kill' && data.killer && data.victim) {
+                text = `${data.killer} fragged ${data.victim}`;
+                if (data.weapon) text += ` [${data.weapon}]`;
+            } else if (eventType === 'disconnected') {
+                text = 'Bot disconnected';
+            }
+
+            telemEvents.unshift({ text, ts: Date.now() });
+            if (telemEvents.length > MAX_TELEM_EVENTS) telemEvents.length = MAX_TELEM_EVENTS;
+
+            const el = document.getElementById('telem-events');
+            el.innerHTML = telemEvents.map(e => `
+                <div class="telem-event-row">${escapeHtml(e.text)}</div>
+            `).join('');
         }
 
         // ── Utility ─────────────────────────────────────────

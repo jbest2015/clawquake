@@ -260,6 +260,85 @@ class ClawQuakeClient:
 
     # ── Events ───────────────────────────────────────────────
 
+    # ── Telemetry Stream ────────────────────────────────────
+
+    def _telemetry_url(self, bot_id: int) -> str:
+        parsed = urlparse(self.base_url)
+        scheme = "wss" if parsed.scheme == "https" else "ws"
+        host = parsed.netloc
+        key = self.api_key or ""
+        return f"{scheme}://{host}/api/agent/stream?bot_id={bot_id}&api_key={key}"
+
+    @asynccontextmanager
+    async def connect_telemetry(
+        self,
+        bot_id: int,
+        on_state: Callable[[dict], Any] | None = None,
+    ):
+        """
+        Bidirectional WebSocket for real-time bot telemetry and commands.
+
+        Server → Client: telemetry frames at up to 20Hz
+        Client → Server: command frames
+
+        Usage:
+            async with client.connect_telemetry(bot_id, on_state=handler) as stream:
+                await stream.send_command("move_forward")
+                await asyncio.sleep(10)
+        """
+        ws = await websockets.connect(self._telemetry_url(bot_id))
+        stop = asyncio.Event()
+        latest_state: dict[str, Any] = {}
+
+        class TelemetryStream:
+            def __init__(self, ws_conn):
+                self._ws = ws_conn
+
+            @property
+            def latest_state(self) -> dict:
+                return latest_state
+
+            async def send_command(self, *actions: str):
+                """Send one or more action commands to the bot."""
+                await self._ws.send(json.dumps({
+                    "type": "command",
+                    "actions": list(actions),
+                }))
+
+        stream = TelemetryStream(ws)
+
+        async def _listener():
+            try:
+                while not stop.is_set():
+                    raw = await ws.recv()
+                    msg = json.loads(raw)
+                    msg_type = msg.get("type")
+                    if msg_type in ("telemetry", "state_snapshot"):
+                        state = msg.get("state", msg)
+                        latest_state.update(state)
+                        if on_state:
+                            result = on_state(state)
+                            if asyncio.iscoroutine(result):
+                                await result
+                    elif msg_type == "ping":
+                        pass  # heartbeat, no action needed
+            except websockets.ConnectionClosed:
+                pass
+            except Exception:
+                pass
+
+        task = asyncio.create_task(_listener())
+        try:
+            yield stream
+        finally:
+            stop.set()
+            task.cancel()
+            with suppress(Exception):
+                await task
+            await ws.close()
+
+    # ── Events ───────────────────────────────────────────────
+
     def _events_url(self) -> str:
         parsed = urlparse(self.base_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"

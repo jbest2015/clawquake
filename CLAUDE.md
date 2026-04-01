@@ -53,10 +53,10 @@ Four Docker services compose the platform:
 ```
 
 ### Orchestrator (`orchestrator/`)
-FastAPI backend. Entry point is `main.py`. Handles auth (JWT + API keys), bot registration, matchmaking queue, ELO calculation, RCON server pool, WebSocket event broadcasting, and bot subprocess management. SQLAlchemy models in `models.py`. Additional modules: `ai_agent_interface.py` (AI agent integration), `websocket_hub.py` (WebSocket connection management).
+FastAPI backend. Entry point is `main.py`. Handles auth (JWT + API keys), bot registration, matchmaking queue, ELO calculation, RCON server pool, WebSocket event broadcasting, and bot subprocess management. SQLAlchemy models in `models.py`. Additional modules: `ai_agent_interface.py` (AI agent integration + WebSocket telemetry endpoints), `telemetry_hub.py` (per-bot pub/sub with bounded queues for real-time telemetry fan-out), `websocket_hub.py` (WebSocket connection management).
 
 ### Bot Runtime (`bot/` + `agent_runner.py`)
-`agent_runner.py` is the CLI entry point spawned by the orchestrator's `process_manager.py` as a subprocess for each bot in a match. It loads a strategy `.py` file, connects to the QuakeJS server via WebSocket using the Q3 protocol client (`bot/client.py`), and runs a tick loop calling `strategy.tick()` each frame. Supports hot-reload of strategy files.
+`agent_runner.py` is the CLI entry point spawned by the orchestrator's `process_manager.py` as a subprocess for each bot in a match. It loads a strategy `.py` file, connects to the QuakeJS server via WebSocket using the Q3 protocol client (`bot/client.py`), and runs a tick loop calling `strategy.tick()` each frame. Supports hot-reload of strategy files. Includes `TelemetryStreamer` for WebSocket telemetry streaming with graceful fallback (via `--ws-url` CLI arg).
 
 Key modules:
 - `bot/snapshot.py` — Delta decompression and Q3 snapshot parsing (state machine)
@@ -64,7 +64,7 @@ Key modules:
 - `bot/game_intelligence.py` — Game state parsing and event detection
 - `bot/agent.py` — High-level agent interface for AI strategy integration
 - `bot/kill_tracker.py` — Kill/death tracking
-- `bot/event_stream.py` — Event broadcasting (`_send()` is no-op; use `_send_sync()`)
+- `bot/event_stream.py` — Event broadcasting (delegates to `_send_sync()`)
 - `bot/replay_recorder.py` — Match replay recording
 
 ### Strategies (`strategies/`)
@@ -77,7 +77,7 @@ Named agent directories (e.g., `agents/claude/`, `agents/antigravity/`) with ver
 HLS streaming container (Xvfb + FFmpeg → nginx). Captures live match video for browser-based spectating.
 
 ### SDK (`sdk/`)
-Python client library (`clawquake_sdk.py`) wrapping all API endpoints for programmatic access.
+Python client library (`clawquake_sdk.py`) wrapping all API endpoints for programmatic access. Includes `connect_telemetry()` async context manager for bidirectional WebSocket telemetry streaming.
 
 ### Tournament (`tournament/`)
 `bracket.py` — Tournament bracket logic for single and double elimination.
@@ -138,6 +138,9 @@ Optional:
 - `docs/claw/strategy_interface.md` — Strategy execution interface docs
 - `docs/claw/strategy_loading.md` — Strategy loading behavior (control plane vs runtime plane)
 
+## Design System
+Always read `DESIGN.md` before making any visual or UI decisions. All font choices, colors, spacing, and aesthetic direction are defined there. Do not deviate without explicit user approval.
+
 ## Important Gotchas
 
 - **Protocol 71 vs 68**: QuakeJS uses protocol 71. Must set `sv_pure 0` and skip legacy `begin` command for protocol 71 servers. Otherwise bots connect but never spawn.
@@ -147,6 +150,6 @@ Optional:
 - **API key required for matches**: `_owner_has_active_key()` check means bots won't launch without an active, non-expired API key.
 - **Game servers only work on x86_64**: OpenArena QVM is incompatible with ARM64.
 - **Production uses `docker-compose` (hyphenated)**: Older Docker version on prod server.
-- **EventStream `_send()` is a no-op**: Use `_send_sync()` in `bot/event_stream.py` instead.
+- **EventStream `_send()` delegates to `_send_sync()`**: Previously was a no-op; fixed in v0.1.0.0.
 - **Strategy loading convention**: `strategies/<normalized_bot_name>.py` with fallback to `strategies/default.py`. No per-bot `strategy_path` field in API yet.
 - **Huffman compression**: Connect packets use `q3huff2` C extension for Huffman coding. Fragment reassembly uses unsigned sequence numbers.
