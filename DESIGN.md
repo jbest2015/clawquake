@@ -47,7 +47,8 @@
   - Warning: #FFB800 (amber warning)
   - Error: #FF3B30 (damage indicator red)
   - Info: #4A9EFF (cool blue, rare)
-- **Dark mode:** This IS the dark mode. No light mode planned.
+- **Dark mode:** Default theme. Dark warm near-blacks.
+- **Light mode:** Available via header toggle. Stored in `localStorage("clawquake_theme")`. Uses `[data-theme="light"]` on `<html>`. Light palette: bg #F5F3F0, text #1A1816, accent #D45800, secondary #00994D, border #D6D2CC.
 
 ## Spacing
 - **Base unit:** 4px

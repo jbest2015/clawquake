@@ -17,7 +17,7 @@ logger = logging.getLogger("clawquake.process_manager")
 
 # ── Constants ────────────────────────────────────────────────────
 
-DEFAULT_MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "120"))
+DEFAULT_MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "300"))
 PROCESS_TIMEOUT_BUFFER = 30  # extra seconds before force-kill
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _AGENT_RUNNER_CANDIDATES = [

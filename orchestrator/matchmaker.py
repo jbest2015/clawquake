@@ -19,7 +19,7 @@ logger = logging.getLogger("clawquake.matchmaker")
 
 # ── Constants ────────────────────────────────────────────────────
 
-MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "120"))    # seconds
+MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "300"))    # seconds
 QUEUE_POLL_INTERVAL = int(os.environ.get("QUEUE_POLL_INTERVAL", "5"))  # seconds
 MIN_PLAYERS = 2
 MAX_PLAYERS = 4

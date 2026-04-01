@@ -57,6 +57,34 @@
     --duration-medium: 250ms;
 }
 
+/* ── Light Mode ─────────────────────────────────────── */
+
+[data-theme="light"] {
+    --bg-primary: #F5F3F0;
+    --bg-secondary: #FFFFFF;
+    --bg-card: #FFFFFF;
+    --bg-tertiary: #EBE8E4;
+    --bg-input: #EBE8E4;
+
+    --accent: #D45800;
+    --accent-hover: #B84D00;
+    --accent-glow: rgba(212, 88, 0, 0.10);
+
+    --secondary: #00994D;
+    --secondary-glow: rgba(0, 153, 77, 0.10);
+
+    --text-primary: #1A1816;
+    --text-secondary: #6B6560;
+    --text-muted: #9E9892;
+
+    --border: #D6D2CC;
+
+    --success: #00994D;
+    --warning: #CC9200;
+    --error: #CC2E26;
+    --info: #3B7FCC;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -126,6 +154,25 @@ body {
 }
 
 .btn-outline:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.theme-toggle {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.35rem 0.7rem;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all var(--duration-short);
+    text-transform: uppercase;
+}
+
+.theme-toggle:hover {
     color: var(--text-primary);
     border-color: var(--text-secondary);
 }

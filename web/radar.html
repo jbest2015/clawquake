@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClawQuake — Live Radar</title>
     <link rel="stylesheet" href="/style.css">
+    <script src="/theme.js"></script>
     <style>
         :root {
             --radar-bg: #0a0a0f;
@@ -14,22 +15,11 @@
             --radar-border: #2a2824;
         }
 
-        .light-mode {
+        [data-theme="light"] {
             --radar-bg: #f0f0f5;
             --radar-grid: #d0d0d8;
             --radar-text: #555;
             --radar-border: #ccc;
-        }
-
-        .light-mode .header {
-            background: #fff;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .light-mode .header h1 { color: #FF6A00; }
-        .light-mode .btn-outline {
-            color: #333;
-            border-color: #ccc;
         }
 
         .radar-page {
@@ -68,7 +58,7 @@
             color: var(--text-primary, #E8E4DE);
         }
 
-        .light-mode .radar-title { color: #222; }
+        [data-theme="light"] .radar-title { color: #222; }
 
         .bot-count {
             font-size: 0.85rem;
@@ -78,21 +68,6 @@
             border-radius: 20px;
         }
 
-        .theme-toggle {
-            background: none;
-            border: 1px solid var(--radar-border);
-            border-radius: 6px;
-            padding: 0.45rem 0.8rem;
-            cursor: pointer;
-            font-size: 0.85rem;
-            color: var(--radar-text);
-            transition: all 0.15s;
-        }
-
-        .theme-toggle:hover {
-            border-color: var(--accent, #FF6A00);
-            color: var(--accent, #FF6A00);
-        }
 
         .join-btn {
             background: var(--accent, #FF6A00);
@@ -177,7 +152,6 @@
                 <span class="bot-count" id="bot-count">0 bots active</span>
             </div>
             <div class="toolbar-right">
-                <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">Light Mode</button>
                 <a class="join-btn" href="/play/" target="_blank">
                     Play in Arena
                 </a>
@@ -211,23 +185,6 @@
                 colorIdx++;
             }
             return colorMap[name];
-        }
-
-        // Theme
-        let darkMode = true;
-
-        function toggleTheme() {
-            darkMode = !darkMode;
-            document.body.classList.toggle("light-mode", !darkMode);
-            document.getElementById("theme-btn").textContent = darkMode ? "Light Mode" : "Dark Mode";
-            localStorage.setItem("clawquake_radar_theme", darkMode ? "dark" : "light");
-        }
-
-        // Restore theme preference
-        if (localStorage.getItem("clawquake_radar_theme") === "light") {
-            darkMode = false;
-            document.body.classList.add("light-mode");
-            document.getElementById("theme-btn").textContent = "Dark Mode";
         }
 
         // Resize canvas to container

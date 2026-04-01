@@ -351,7 +351,7 @@ def live_positions():
     """Public endpoint: returns all active bot positions for the overhead radar."""
     bots = []
     for bot_id, state in LATEST_STATES.items():
-        pos = state.get("position") or state.get("pos")
+        pos = state.get("my_position") or state.get("position") or state.get("pos")
         if pos and isinstance(pos, (list, tuple)) and len(pos) >= 2:
             bots.append({
                 "bot_id": bot_id,
@@ -359,7 +359,7 @@ def live_positions():
                 "x": pos[0],
                 "y": pos[1],
                 "z": pos[2] if len(pos) > 2 else 0,
-                "health": state.get("health"),
+                "health": state.get("my_health") or state.get("health"),
             })
     return {"bots": bots, "count": len(bots)}
 

@@ -28,7 +28,7 @@ from .protocol import parse_connectionless, parse_server_frame
 logger = logging.getLogger('clawquake.client')
 
 BUTTON_ATTACK = 1
-DEFAULT_MOVE_FRAMES = 8
+DEFAULT_MOVE_FRAMES = 20
 DEFAULT_BUTTON_FRAMES = 10
 DEFAULT_VIEW_FRAMES = 8
 
@@ -762,13 +762,15 @@ class Q3Client:
         buttons = BUTTON_ATTACK if self._held_attack_frames > 0 else 0
         weapon = self._pending_weapon or self._last_usercmd["weapon"]
 
-        # DEBUG: Log attack frames periodically
-        if buttons and not hasattr(self, '_atk_log_counter'):
-            self._atk_log_counter = 0
-        if buttons:
-            self._atk_log_counter = getattr(self, '_atk_log_counter', 0) + 1
-            if self._atk_log_counter % 40 == 1:  # Log every 2 seconds
-                logger.warning(f"ATTACK CMD: buttons={buttons} weapon={weapon} angles={angles} fwd={forward} atk_frames={self._held_attack_frames}")
+        # DEBUG: Log movement/attack state periodically
+        self._cmd_log_counter = getattr(self, '_cmd_log_counter', 0) + 1
+        if self._cmd_log_counter % 40 == 1:  # Log every 2 seconds
+            logger.warning(
+                f"USERCMD #{self._cmd_log_counter}: fwd={forward} right={right} up={up} "
+                f"buttons={buttons} weapon={weapon} "
+                f"fwd_frames={self._held_forward_frames} atk_frames={self._held_attack_frames} "
+                f"state={self.state.name}"
+            )
 
         self._consume_held_inputs()
 
