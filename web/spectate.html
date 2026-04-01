@@ -74,7 +74,7 @@
     <div class="spectate-wrap">
         <div class="spectate-toolbar">
             <label for="spectate-path">Spectator Path</label>
-            <input id="spectate-path" value="/spectate/" />
+            <input id="spectate-path" value="/play/" />
             <button class="btn btn-primary" onclick="loadSpectator()">Open</button>
             <label><input type="checkbox" id="auto-follow" checked /> Auto-follow active match</label>
         </div>
@@ -103,11 +103,8 @@
         const autoFollow = document.getElementById("auto-follow");
 
         const query = new URLSearchParams(window.location.search);
-        const directHost = window.location.hostname || "localhost";
-        const directProto = window.location.protocol === "https:" ? "https:" : "http:";
-        const directPort = window.location.protocol === "https:" ? "" : ":8080";
         const playerName = (localStorage.getItem('clawquake_user') || '').trim() || 'Player';
-        const defaultPath = `${directProto}//${directHost}${directPort}/?name=${encodeURIComponent(playerName)}`;
+        const defaultPath = `/play/?name=${encodeURIComponent(playerName)}`;
         const initialPath = query.get("path") || defaultPath;
         const initialMatch = query.get("match_id");
         if (initialMatch) {
@@ -154,8 +151,8 @@
                     if (data.match_id !== undefined) {
                         matchIdEl.textContent = String(data.match_id);
                     }
-                    if (autoFollow.checked && data.spectate_path) {
-                        pathInput.value = data.spectate_path;
+                    if (autoFollow.checked) {
+                        pathInput.value = data.spectate_path || defaultPath;
                         loadSpectator();
                     }
                 } else if (eventType === "match_ended" && data.match_id !== undefined) {

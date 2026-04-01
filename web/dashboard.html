@@ -191,11 +191,8 @@
         let streamRetryTimer = null;
         let fallbackTimer = null;
         const enableHls = new URLSearchParams(window.location.search).get('hls') === '1';
-        const spectateHost = window.location.hostname || 'localhost';
-        const spectateProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        const spectatePort = window.location.protocol === 'https:' ? '' : ':8080';
         const playerName = (username || '').trim() || 'Player';
-        const directSpectateUrl = `${spectateProtocol}//${spectateHost}${spectatePort}/?name=${encodeURIComponent(playerName)}`;
+        const directSpectateUrl = `/play/?name=${encodeURIComponent(playerName)}`;
 
         function setOfflineMessage(title, detail = '') {
             offlineEl.innerHTML = `
@@ -222,8 +219,8 @@
             // Ensure keyboard focus goes to the embedded game frame.
             try { directSpectate.focus(); } catch (e) { }
             setOfflineMessage(
-                'Direct spectator mode',
-                reason || 'Connected to QuakeJS live view.'
+                'Live QuakeJS mode',
+                reason || 'Connected to the proxied QuakeJS live view.'
             );
             // Keep overlay hidden in direct mode so gameplay stays visible.
             offlineEl.style.display = 'none';

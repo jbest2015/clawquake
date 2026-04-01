@@ -185,7 +185,10 @@ async def _websocket_publish_loop():
         started = active_ids - previous_active
         ended = previous_active - active_ids
         for match_id in started:
-            await websocket_hub.broadcast("match_started", {"match_id": match_id})
+            await websocket_hub.broadcast(
+                "match_started",
+                {"match_id": match_id, "spectate_path": "/play/"},
+            )
         for match_id in ended:
             await websocket_hub.broadcast("match_ended", {"match_id": match_id})
         previous_active = active_ids

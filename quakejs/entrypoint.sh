@@ -8,17 +8,13 @@ cd /home/quakejs/www
 
 # --- Patch index.html ---
 # The base entrypoint does: sed to replace 'quakejs: with window.location.hostname
-# We go further: use protocol-aware URLs
-# Content server (fs_cdn): use same origin (no port needed, served by same nginx)
-# Game server (+connect): use same hostname on port 443 with /ws path
-# This way everything goes through the HTTPS reverse proxy
+# We go further: keep the browser client on window.location.host so it works
+# both when loaded directly on :8080 and when reverse-proxied through /play/.
 
 cat > /tmp/index_patch.js << 'PATCH'
 // Detect protocol and build URLs accordingly
 var proto = window.location.protocol;
-var host = window.location.hostname;
-var wsProto = (proto === 'https:') ? 'wss:' : 'ws:';
-var httpPort = (proto === 'https:') ? '443' : '8080';
+var originHost = window.location.host;
 
 // Player name: allow passing ?name=... from the parent dashboard, and persist it
 // for direct loads (prevents showing up as "UnnamedPlayer").
@@ -44,8 +40,8 @@ var args = [
   // UI layer team selection cvars used by many Q3 frontends.
   '+set', 'ui_team', '3',
   '+set', 'ui_teamName', 'spectator',
-  '+set', 'fs_cdn', host + ':' + httpPort,
-  '+connect', host + ':' + httpPort
+  '+set', 'fs_cdn', originHost,
+  '+connect', originHost
 ];
 PATCH
 
@@ -62,9 +58,7 @@ with open('index.html', 'r') as f:
 # Replace the args assignment line (handles various formats from sed or manual edits)
 old_pattern = r'var args = \[.*?\];[^\n]*//custom args.*'
 new_code = '''var proto = window.location.protocol;
-				var host = window.location.hostname;
-				var wsProto = (proto === 'https:') ? 'wss:' : 'ws:';
-				var httpPort = (proto === 'https:') ? '443' : '8080';
+				var originHost = window.location.host;
 				var qs = new URLSearchParams(window.location.search || '');
 				var playerName = qs.get('name');
 				try {
@@ -73,7 +67,7 @@ new_code = '''var proto = window.location.protocol;
 				playerName = (playerName || '').replace(/[\\\\\";]/g, '').trim().slice(0, 20);
 				if (!playerName) playerName = 'ClawQuakePlayer';
 				try { localStorage.setItem('clawquake_player_name', playerName); } catch (e) {}
-				var args = ['+name', playerName, '+set', 't', '3', '+set', 'team', 'spectator', '+set', 'ui_team', '3', '+set', 'ui_teamName', 'spectator', '+set', 'fs_cdn', host + ':' + httpPort, '+connect', host + ':' + httpPort];'''
+				var args = ['+name', playerName, '+set', 't', '3', '+set', 'team', 'spectator', '+set', 'ui_team', '3', '+set', 'ui_teamName', 'spectator', '+set', 'fs_cdn', originHost, '+connect', originHost];'''
 
 content = re.sub(old_pattern, new_code, content)
 
@@ -109,7 +103,7 @@ print('index.html patched successfully')
 " || {
     echo "Python patch failed, using sed fallback"
     # Fallback: just set the known good values
-    sed -i "s|var args = .*//custom args.*|var args = ['+name', 'ClawQuakePlayer', '+set', 'fs_cdn', window.location.hostname + ':' + (window.location.protocol === 'https:' ? '443' : '8080'), '+connect', window.location.hostname + ':' + (window.location.protocol === 'https:' ? '443' : '8080')];|" index.html
+    sed -i "s|var args = .*//custom args.*|var args = ['+name', 'ClawQuakePlayer', '+set', 'fs_cdn', window.location.host, '+connect', window.location.host];|" index.html
 }
 
 # --- Patch ioquake3.js (browser client) ---
