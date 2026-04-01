@@ -15,13 +15,13 @@ class TestGameIntelligence(unittest.TestCase):
 
     def test_classify_item(self):
         ent = Mock()
-        ent.eType = 2 # ET_ITEM
-        ent.modelindex = 1
-        
+        ent.entity_type = 2  # entityType_t.ET_ITEM
+        ent.fields = {'modelindex': 1}
+
         config_strings = {
             configstr_t.CS_MODELS + 1: "models/powerups/armor/armor_red.md3"
         }
-        
+
         itype, subtype, val = ItemClassifier.classify(ent, config_strings)
         self.assertEqual(itype, 'armor')
         self.assertEqual(subtype, 'red')

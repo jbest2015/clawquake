@@ -710,12 +710,12 @@ class TestHealthAndStatus:
     def test_unauthenticated_endpoints_reject(self, e2e_env):
         c = e2e_env["client"]
 
-        # These require auth
-        assert c.get("/api/leaderboard").status_code == 403
-        assert c.get("/api/matches").status_code == 403
-        assert c.get("/api/auth/me").status_code == 403
+        # These require auth — all return 401 when no credentials provided
+        assert c.get("/api/leaderboard").status_code == 401
+        assert c.get("/api/matches").status_code == 401
+        assert c.get("/api/auth/me").status_code == 401
         assert c.get("/api/bots").status_code == 401
-        assert c.get("/api/keys").status_code == 403
+        assert c.get("/api/keys").status_code == 401
 
     def test_nonexistent_match_404(self, e2e_env):
         c = e2e_env["client"]
