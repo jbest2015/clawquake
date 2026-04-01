@@ -50,7 +50,7 @@ services:
       dockerfile: orchestrator/Dockerfile
     container_name: clawquake-orchestrator
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
       - RCON_PASSWORD=${RCON_PASSWORD:?Set RCON_PASSWORD in .env}
@@ -89,15 +89,28 @@ services:
   nginx:
     image: nginx:alpine
     container_name: clawquake-nginx
-    ports:
-      - "80:80"
+    expose:
+      - "80"
+    environment:
+      - VIRTUAL_HOST=clawquake.johnbest.ai
+      - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST=clawquake.johnbest.ai
+      - LETSENCRYPT_EMAIL=john@johnbest.ai
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./web:/usr/share/nginx/html:ro
+    networks:
+      - default
+      - proxy
     depends_on:
       - orchestrator
       - spectator
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
+    name: bigjohnbestai_default
 
 volumes:
   clawquake-data:
