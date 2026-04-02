@@ -107,21 +107,33 @@ print('index.html patched successfully')
 }
 
 # --- Patch ioquake3.js (browser client) ---
-# Change ws:// to use wss:// when on HTTPS page
-# Line ~16597: var url = 'ws://' + addr + ':' + port;
+# Change ws:// to use wss:// when on HTTPS page, and http:// content to protocol-aware
 cd /home/quakejs/www
 if [ -f ioquake3.js ]; then
-    echo "Patching ioquake3.js for WSS support..."
-    sed -i "s|var url = 'ws://' + addr + ':' + port;|var needsImplicitTlsPort = (window.location.protocol === 'https:' && (port === 80 || port === '80')); var url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + addr + (needsImplicitTlsPort ? '' : ':' + port) + '/ws';|" ioquake3.js
-    echo "ioquake3.js patched"
-fi
+    echo "Patching ioquake3.js for WSS + HTTPS support..."
+    python3 -c "
+with open('ioquake3.js', 'r') as f:
+    content = f.read()
 
-# --- Patch content server URL (http:// -> protocol-aware) ---
-# Line ~15277: var url = 'http://' + fs_cdn + '/assets/manifest.json';
-if [ -f ioquake3.js ]; then
-    echo "Patching ioquake3.js for HTTPS content server..."
-    sed -i "s|var url = 'http://' + fs_cdn|var url = window.location.protocol + '//' + fs_cdn|" ioquake3.js
-    echo "Content server URL patched"
+# WSS support: replace ws:// URL construction with protocol-aware version
+old_ws = \"var url = 'ws://' + addr + ':' + port;\"
+new_ws = (
+    \"var needsImplicitTlsPort = (window.location.protocol === 'https:' && (port === 80 || port === '80')); \"
+    \"var url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + addr + \"
+    \"(needsImplicitTlsPort ? '' : ':' + port) + '/ws';\"
+)
+content = content.replace(old_ws, new_ws)
+
+# HTTPS content server: replace http:// with protocol-aware
+content = content.replace(
+    \"var url = 'http://' + fs_cdn\",
+    \"var url = window.location.protocol + '//' + fs_cdn\"
+)
+
+with open('ioquake3.js', 'w') as f:
+    f.write(content)
+print('ioquake3.js patched successfully')
+" || echo "WARNING: ioquake3.js patch failed (non-fatal)"
 fi
 
 # Use our custom nginx config
