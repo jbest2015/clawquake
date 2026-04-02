@@ -386,6 +386,19 @@
                         <option value="32">32</option>
                     </select>
                 </div>
+                <div class="form-field" style="flex: 1; min-width: 140px;">
+                    <label for="t-duration">Match Duration</label>
+                    <select id="t-duration">
+                        <option value="120">2 minutes</option>
+                        <option value="300" selected>5 minutes</option>
+                        <option value="600">10 minutes</option>
+                        <option value="900">15 minutes</option>
+                    </select>
+                </div>
+                <div class="form-field" style="flex: 0.8; min-width: 120px;">
+                    <label for="t-fraglimit">Frag Limit</label>
+                    <input id="t-fraglimit" type="number" placeholder="None" min="1" max="100" style="width:100%;">
+                </div>
                 <button class="create-btn" id="create-btn" onclick="createTournament()">Create Tournament</button>
             </div>
             <div class="form-message" id="form-message"></div>
@@ -583,16 +596,22 @@
             const name = document.getElementById("t-name").value.trim();
             const description = document.getElementById("t-desc").value.trim();
             const max_participants = parseInt(document.getElementById("t-max").value, 10);
+            const match_duration = parseInt(document.getElementById("t-duration").value, 10);
+            const fraglimitRaw = document.getElementById("t-fraglimit").value.trim();
+            const frag_limit = fraglimitRaw ? parseInt(fraglimitRaw, 10) : null;
 
             if (!name) { showMessage("Tournament name is required.", "error"); return; }
 
             const btn = document.getElementById("create-btn");
             btn.disabled = true;
 
+            const payload = { name, description: description || undefined, max_participants, match_duration };
+            if (frag_limit) payload.frag_limit = frag_limit;
+
             const { response, data } = await fetchJson("/api/tournaments", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, description: description || undefined, max_participants })
+                body: JSON.stringify(payload)
             });
 
             btn.disabled = false;
@@ -605,6 +624,8 @@
             document.getElementById("t-name").value = "";
             document.getElementById("t-desc").value = "";
             document.getElementById("t-max").value = "8";
+            document.getElementById("t-duration").value = "300";
+            document.getElementById("t-fraglimit").value = "";
             showMessage("Tournament created!", "success");
             await loadTournaments();
         }

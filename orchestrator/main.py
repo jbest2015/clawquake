@@ -273,10 +273,13 @@ async def _run_tournament(tournament_id: int):
             db = SessionLocal()
             # Extract plain values before closing session to avoid DetachedInstanceError
             match_info = None  # (tournament_match_id, game_match_id, bot1_id, bot2_id)
+            match_duration = 300
             try:
                 tournament = db.query(TournamentDB).filter(TournamentDB.id == tournament_id).first()
                 if not tournament or tournament.status != "active":
                     return
+
+                match_duration = getattr(tournament, "match_duration", None) or 300
 
                 system = TournamentBracket(db)
                 ready = system.get_ready_matches(tournament_id)
@@ -313,6 +316,7 @@ async def _run_tournament(tournament_id: int):
             result = await matchmaker.run_existing_match(
                 game_match_id,
                 [bot1_id, bot2_id],
+                duration=match_duration,
             )
 
             if not result or not result.get("winner_id"):
@@ -680,6 +684,8 @@ def create_tournament(
     # Set extra fields not handled by bracket engine
     bracket.description = t.description
     bracket.max_participants = t.max_participants
+    bracket.match_duration = t.match_duration
+    bracket.frag_limit = t.frag_limit
     db.commit()
     db.refresh(bracket)
     return TournamentResponse(
@@ -688,6 +694,8 @@ def create_tournament(
         created_by_user_id=bracket.created_by_user_id, creator_name=user.username,
         status="pending", participant_count=0, current_round=0,
         winner_bot_id=None, created_at=bracket.created_at,
+        match_duration=bracket.match_duration or 300,
+        frag_limit=bracket.frag_limit,
     )
 
 
@@ -728,6 +736,8 @@ def list_tournaments(
                 winner_bot_id=tournament.winner_bot_id,
                 winner_name=bot_name_map.get(tournament.winner_bot_id),
                 created_at=tournament.created_at,
+                match_duration=getattr(tournament, "match_duration", None) or 300,
+                frag_limit=getattr(tournament, "frag_limit", None),
             )
         )
     return items
@@ -897,6 +907,8 @@ def get_tournament(
              winner_bot_id=t.winner_bot_id,
              winner_name=bot_names.get(t.winner_bot_id),
              created_at=t.created_at,
+             match_duration=getattr(t, "match_duration", None) or 300,
+             frag_limit=getattr(t, "frag_limit", None),
         ),
         "participants": [
             {

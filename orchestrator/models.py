@@ -278,6 +278,8 @@ class TournamentDB(Base):
     ended_at = Column(DateTime, nullable=True)
     winner_bot_id = Column(Integer, nullable=True) # FK bots.id
     current_round = Column(Integer, default=0)
+    match_duration = Column(Integer, default=300)  # seconds per match
+    frag_limit = Column(Integer, nullable=True)     # kills to win (None = time only)
 
 class TournamentParticipantDB(Base):
     __tablename__ = "tournament_participants"
@@ -309,6 +311,8 @@ class TournamentCreate(BaseModel):
     format: str = "single_elim"
     max_participants: int = 16
     seed_by_elo: bool = True
+    match_duration: int = 300       # seconds per match
+    frag_limit: Optional[int] = None  # kills to win (None = time only)
 
 class TournamentJoin(BaseModel):
     bot_id: int
@@ -327,6 +331,8 @@ class TournamentResponse(BaseModel):
     winner_bot_id: Optional[int] = None
     winner_name: Optional[str] = None
     created_at: Optional[datetime] = None
+    match_duration: int = 300
+    frag_limit: Optional[int] = None
 
 # ── Adaptive Learner DB (Anti-Gravity — Batch 4) ────────────
 

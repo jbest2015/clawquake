@@ -412,7 +412,7 @@ class MatchMaker:
         )
         return default
 
-    async def _run_match_with_processes(self, match_id: int, bot_ids: list[int]):
+    async def _run_match_with_processes(self, match_id: int, bot_ids: list[int], duration: int = None):
         """Launch bot processes, wait for completion, finalize match."""
         if not self.process_manager:
             return
@@ -440,11 +440,12 @@ class MatchMaker:
                 return self.finalize_match(match_id)
 
             # Launch all bots
+            match_duration = duration if duration is not None else MATCH_DURATION
             self.process_manager.launch_match(
                 match_id=match_id,
                 bots=bots_info,
                 server_url=server_url,
-                duration=MATCH_DURATION,
+                duration=match_duration,
             )
 
             # Wait for all bots to finish
@@ -481,9 +482,10 @@ class MatchMaker:
         self,
         match_id: int,
         bot_ids: list[int],
+        duration: int = None,
     ) -> dict | None:
         """Run an existing match record with bot processes and finalize it."""
-        return await self._run_match_with_processes(match_id, bot_ids)
+        return await self._run_match_with_processes(match_id, bot_ids, duration=duration)
 
     async def run_loop(self):
         """Main matchmaker loop — runs as a background task."""

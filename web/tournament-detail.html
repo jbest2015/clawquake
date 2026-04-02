@@ -792,11 +792,16 @@
             const created = info.created_at ? formatDate(info.created_at) : "";
             const maxBots = info.max_participants || 8;
 
+            const durationMin = Math.round((info.match_duration || 300) / 60);
+            const fragLabel = info.frag_limit ? `${info.frag_limit} frags` : "Time only";
+
             let metaHtml = `
                 <span class="status-badge ${statusClass}">${statusLabel}</span>
                 <span class="meta-pill creator">Created by ${escapeHtml(creatorName)}${created ? " &middot; " + escapeHtml(created) : ""}</span>
                 <span class="meta-pill">${participants.length} / ${maxBots} bots</span>
                 <span class="meta-pill">${escapeHtml(info.format === "single_elim" ? "Single Elimination" : (info.format || "Single Elimination"))}</span>
+                <span class="meta-pill">${durationMin} min matches</span>
+                <span class="meta-pill">${fragLabel}</span>
             `;
             document.getElementById("t-meta").innerHTML = metaHtml;
 
