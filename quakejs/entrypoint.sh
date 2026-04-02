@@ -124,10 +124,14 @@ new_ws = (
 )
 content = content.replace(old_ws, new_ws)
 
-# HTTPS content server: replace http:// with protocol-aware
+# HTTPS content server: replace ALL http:// asset URLs with protocol-aware
 content = content.replace(
     \"var url = 'http://' + fs_cdn\",
     \"var url = window.location.protocol + '//' + fs_cdn\"
+)
+content = content.replace(
+    \"var url = 'http://' + root + '/assets/'\",
+    \"var url = window.location.protocol + '//' + root + '/assets/'\"
 )
 
 with open('ioquake3.js', 'w') as f:
