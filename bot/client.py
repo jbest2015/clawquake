@@ -739,11 +739,18 @@ class Q3Client:
         return bytes(packet)
 
     def _next_usercmd(self):
-        """Build the next usercmd from held input state."""
-        if self.server_time:
-            server_time = self.server_time + 50
-        elif self._last_usercmd["server_time"]:
-            server_time = self._last_usercmd["server_time"] + 50
+        """Build the next usercmd from held input state.
+
+        The server_time in each usercmd MUST monotonically increase.
+        We use the greater of (last usercmd time + 50ms) or (latest
+        snapshot server_time + 50ms) so the value always advances
+        even between snapshots.
+        """
+        last_cmd_time = self._last_usercmd["server_time"] or 0
+        snap_time = self.server_time or 0
+        base_time = max(last_cmd_time, snap_time)
+        if base_time:
+            server_time = base_time + 50
         else:
             server_time = int(time.time() * 1000) & 0xFFFFFFFF
 
