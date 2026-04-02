@@ -67,7 +67,7 @@ new_code = '''var proto = window.location.protocol;
 				playerName = (playerName || '').replace(/[\\\\\";]/g, '').trim().slice(0, 20);
 				if (!playerName) playerName = 'ClawQuakePlayer';
 				try { localStorage.setItem('clawquake_player_name', playerName); } catch (e) {}
-				var args = ['+name', playerName, '+set', 't', '3', '+set', 'team', 'spectator', '+set', 'ui_team', '3', '+set', 'ui_teamName', 'spectator', '+set', 'fs_cdn', originHost, '+connect', originHost];'''
+				var args = ['+name', playerName, '+set', 'fs_cdn', originHost, '+connect', originHost, '+cmd', 'team', 'spectator'];'''
 
 content = re.sub(old_pattern, new_code, content)
 
@@ -76,27 +76,8 @@ content = re.sub(old_pattern, new_code, content)
 content = content.replace('args.push.apply(args, getQueryCommands());',
                           '// args.push.apply(args, getQueryCommands()); // disabled in ClawQuake')
 
-# Force human browser clients into spectator mode after startup.
-# We do this post-boot using Cvar_Set so the engine has registered userinfo cvars.
-if 'function clawquakeForceSpectator' not in content:
-    content = content.replace(
-        'ioq3.callMain(args);',
-        '''ioq3.callMain(args);
-
-\t\t\t\tfunction clawquakeForceSpectator() {
-\t\t\t\t\ttry {
-\t\t\t\t\t\tif (!ioq3 || !ioq3.ccall) return;
-\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['t', '3']);
-\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['team', 'spectator']);
-\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['ui_team', '3']);
-\t\t\t\t\t\tioq3.ccall('Cvar_Set', 'number', ['string','string'], ['ui_teamName', 'spectator']);
-\t\t\t\t\t\tif (ioq3.runPostSets) ioq3.runPostSets();
-\t\t\t\t\t} catch (e) {}
-\t\t\t\t}
-\t\t\t\tsetTimeout(clawquakeForceSpectator, 1500);
-\t\t\t\tsetTimeout(clawquakeForceSpectator, 3000);
-\t\t\t\tsetTimeout(clawquakeForceSpectator, 6000);'''
-    )
+# Spectator mode is handled via '+cmd team spectator' in the startup args above.
+# No post-boot JS injection needed (emscripten doesn't export Q3 engine functions).
 with open('index.html', 'w') as f:
     f.write(content)
 print('index.html patched successfully')

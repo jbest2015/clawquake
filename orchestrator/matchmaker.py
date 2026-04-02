@@ -23,7 +23,7 @@ MATCH_DURATION = int(os.environ.get("MATCH_DURATION", "300"))    # seconds
 QUEUE_POLL_INTERVAL = int(os.environ.get("QUEUE_POLL_INTERVAL", "5"))  # seconds
 MIN_PLAYERS = 2
 MAX_PLAYERS = 4
-DEFAULT_MAP = "q3dm17"
+DEFAULT_MAP = "q3dm1"
 
 
 # ── ELO Calculator ──────────────────────────────────────────────
@@ -438,6 +438,19 @@ class MatchMaker:
             if not bots_info:
                 logger.error(f"Match {match_id}: no valid bots found")
                 return self.finalize_match(match_id)
+
+            # Change map via RCON before launching bots
+            match = db.query(MatchDB).filter(MatchDB.id == match_id).first()
+            map_name = match.map_name if match else DEFAULT_MAP
+            if self.rcon_pool:
+                # Find which server we're using and send RCON map change
+                for sid, srv in self.rcon_pool.servers.items():
+                    ws_host = srv.get("ws_host", srv.get("host", ""))
+                    if ws_host and ws_host in server_url:
+                        logger.info(f"Match {match_id}: RCON map {map_name} on {sid}")
+                        self.rcon_pool.send_rcon(sid, f"map {map_name}")
+                        await asyncio.sleep(3)  # Wait for map load
+                        break
 
             # Launch all bots
             match_duration = duration if duration is not None else MATCH_DURATION

@@ -146,6 +146,46 @@ class TelemetryStreamer:
             self._connected = False
 
 
+def _format_external_action(act_name: str, params: dict | None) -> str | None:
+    """Convert structured orchestrator actions into agent action strings."""
+    if not act_name:
+        return None
+
+    params = params or {}
+    lower = act_name.strip().lower()
+
+    if lower in {"move_forward", "move_back", "move_left", "move_right", "jump", "attack"}:
+        return lower
+
+    if lower in {"turn_left", "turn_right"}:
+        degrees = params.get("degrees")
+        return f"{lower} {degrees}" if degrees is not None else lower
+
+    if lower in {"weapon", "weapon_switch", "use_weapon"}:
+        weapon = params.get("weapon")
+        if weapon is None:
+            weapon = params.get("number")
+        if weapon is None:
+            return None
+        return f"weapon {weapon}"
+
+    if lower == "aim_at":
+        if "position" in params and isinstance(params["position"], (list, tuple)) and len(params["position"]) >= 3:
+            x, y, z = params["position"][:3]
+            return f"aim_at {x} {y} {z}"
+        if all(key in params for key in ("x", "y", "z")):
+            return f"aim_at {params['x']} {params['y']} {params['z']}"
+        return None
+
+    if lower in {"say", "say_team"}:
+        message = params.get("message", "")
+        if not message:
+            return None
+        return f"{lower} {message}"
+
+    return lower
+
+
 class MatchTracker:
     """Tracks kills, deaths, and match events during a session."""
 
@@ -363,14 +403,15 @@ async def run(args):
 
                     resp = await asyncio.get_running_loop().run_in_executor(None, do_sync)
                     
-                    # Apply incoming macro actions from external AI
+                    # Apply incoming macro actions from external AI using the
+                    # same action parser as strategy actions.
                     for act_def in resp.get("actions", []):
-                        act_name = act_def.get("action")
-                        params = act_def.get("params", {})
-                        if act_name in ("say", "say_team"):
-                            agent.bot.execute(f'{act_name} "{params.get("message", "")}"')
-                        elif act_name:
-                            agent.bot.execute(act_name)
+                        formatted = _format_external_action(
+                            act_def.get("action"),
+                            act_def.get("params", {}),
+                        )
+                        if formatted:
+                            agent.send_actions([formatted])
                 except Exception as e:
                     logger.debug(f"Telemetry sync loop error: {e}")
 
