@@ -709,12 +709,16 @@ class Q3Client:
             writer.write_long(i)
             writer.write_string(self.reliable_commands[inx])
 
-        # Send usermove using clc_move and delta against last usercmd to fix hit-reg
-        writer.write_byte(clc_ops_e.clc_move.value)
-        writer.write_byte(1)  # command count
+        # Send usermove using clc_moveNoDelta — sends absolute values, no delta
+        # encoding against previous usercmd. Simpler and avoids potential
+        # delta key XOR bugs that could corrupt movement values.
         cmd = self._next_usercmd()
+        writer.write_byte(clc_ops_e.clc_moveNoDelta.value)
+        writer.write_byte(1)  # command count
         key = self._command_key()
-        self._write_delta_usercmd(writer, key, self._last_usercmd, cmd)
+        NULL_CMD = {"server_time": 0, "angles": [0, 0, 0], "forwardmove": 0,
+                    "rightmove": 0, "upmove": 0, "buttons": 0, "weapon": 0}
+        self._write_delta_usercmd(writer, key, NULL_CMD, cmd)
         self._last_usercmd = cmd
 
         writer.write_byte(clc_ops_e.clc_EOF.value)

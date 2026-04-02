@@ -167,4 +167,7 @@ exec node build/ioq3ded.js \
   +exec server.cfg \
   +set sv_timeout 10 \
   +set sv_zombietime 1 \
-  +set sv_pure 0
+  +set sv_pure 0 \
+  +set g_doWarmup 0 \
+  +set g_warmup 0 \
+  +set g_countdown 0
