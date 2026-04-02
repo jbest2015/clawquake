@@ -765,11 +765,13 @@ class Q3Client:
         # DEBUG: Log movement/attack state periodically
         self._cmd_log_counter = getattr(self, '_cmd_log_counter', 0) + 1
         if self._cmd_log_counter % 40 == 1:  # Log every 2 seconds
+            ps = self.player_state
+            ps_origin = list(ps.origin) if ps else None
             logger.warning(
                 f"USERCMD #{self._cmd_log_counter}: fwd={forward} right={right} up={up} "
-                f"buttons={buttons} weapon={weapon} "
+                f"buttons={buttons} weapon={weapon} svtime={server_time} "
                 f"fwd_frames={self._held_forward_frames} atk_frames={self._held_attack_frames} "
-                f"state={self.state.name}"
+                f"state={self.state.name} ps_origin={ps_origin}"
             )
 
         self._consume_held_inputs()

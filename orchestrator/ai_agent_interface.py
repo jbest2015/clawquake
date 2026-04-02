@@ -347,15 +347,23 @@ def act(
 
 
 @router.get("/live-positions")
-def live_positions():
+def live_positions(db: Session = Depends(get_db)):
     """Public endpoint: returns all active bot positions for the overhead radar."""
+    # Look up bot names from the DB for any active bots
+    active_ids = list(LATEST_STATES.keys())
+    bot_names = {}
+    if active_ids:
+        from models import BotDB
+        for bot in db.query(BotDB).filter(BotDB.id.in_(active_ids)).all():
+            bot_names[bot.id] = bot.name
+
     bots = []
     for bot_id, state in LATEST_STATES.items():
         pos = state.get("my_position") or state.get("position") or state.get("pos")
         if pos and isinstance(pos, (list, tuple)) and len(pos) >= 2:
             bots.append({
                 "bot_id": bot_id,
-                "name": state.get("bot_name") or state.get("name") or f"Bot {bot_id}",
+                "name": bot_names.get(bot_id) or state.get("bot_name") or state.get("name") or f"Bot {bot_id}",
                 "x": pos[0],
                 "y": pos[1],
                 "z": pos[2] if len(pos) > 2 else 0,
