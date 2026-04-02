@@ -118,9 +118,9 @@ with open('ioquake3.js', 'r') as f:
 # WSS support: replace ws:// URL construction with protocol-aware version
 old_ws = \"var url = 'ws://' + addr + ':' + port;\"
 new_ws = (
-    \"var needsImplicitTlsPort = (window.location.protocol === 'https:' && (port === 80 || port === '80')); \"
-    \"var url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + addr + \"
-    \"(needsImplicitTlsPort ? '' : ':' + port) + '/ws';\"
+    \"var isHttps = (window.location.protocol === 'https:'); \"
+    \"var url = (isHttps ? 'wss://' : 'ws://') + addr + \"
+    \"(isHttps ? '' : ':' + port) + '/ws';\"
 )
 content = content.replace(old_ws, new_ws)
 
