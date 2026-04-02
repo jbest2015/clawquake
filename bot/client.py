@@ -772,13 +772,13 @@ class Q3Client:
         up = self._held_up if self._held_up_frames > 0 else 0
         buttons = BUTTON_ATTACK if self._held_attack_frames > 0 else 0
         weapon = self._pending_weapon or self._last_usercmd["weapon"]
-        # Q3 requires a valid weapon in usercmd; WP_NONE (0) may cause the
-        # server to treat the player as not-yet-spawned and ignore movement.
-        if not weapon:
+        # Q3 usercmd weapon must be a weapon INDEX (1-9), not a bitmask.
+        # Read current weapon from playerstate if we don't have one yet.
+        if not weapon or weapon > 15:
             ps = self.player_state
-            if ps and hasattr(ps, 'stats') and ps.stats and len(ps.stats) > 6:
-                weapon = ps.stats[6]  # STAT_WEAPONS bitmask — not useful directly
-            if not weapon:
+            if ps:
+                weapon = ps.weapon  # weapon index from playerstate fields
+            if not weapon or weapon > 15:
                 weapon = 2  # WP_MACHINEGUN — default spawn weapon
 
         # DEBUG: Log movement/attack state periodically
