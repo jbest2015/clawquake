@@ -138,6 +138,15 @@ fi
 
 cd /quakejs
 
+# Patch server.cfg to disable warmup/countdown (persists across RCON map changes)
+cat >> /quakejs/base/baseq3/server.cfg << 'CFGPATCH'
+seta g_doWarmup 0
+seta g_warmup 0
+seta g_countdown 0
+seta sv_pure 0
+CFGPATCH
+echo "server.cfg patched with warmup disable"
+
 echo "Starting QuakeJS game server..."
 # QuakeJS bots currently do not provide cp/vdr pure-checksum payloads by default.
 # Force non-pure mode so usercmds are accepted and bots can fully enter the match.
