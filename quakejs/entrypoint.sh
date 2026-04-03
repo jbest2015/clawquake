@@ -151,4 +151,6 @@ exec node build/ioq3ded.js \
   +set sv_pure 0 \
   +set g_doWarmup 0 \
   +set g_warmup 0 \
-  +set g_countdown 0
+  +set g_countdown 0 \
+  +set rconpassword "${RCON_PASSWORD:-default-password!}" \
+  +map q3dm1
