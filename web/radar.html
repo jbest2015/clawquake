@@ -201,22 +201,56 @@
         window.addEventListener("resize", resizeCanvas);
         resizeCanvas();
 
-        // Map coordinate ranges (q3dm17 approximate bounds)
-        const MAP_MIN_X = -1500;
-        const MAP_MAX_X = 3000;
-        const MAP_MIN_Y = -2500;
-        const MAP_MAX_Y = 3500;
+        // Dynamic map bounds — auto-calculated from bot + item positions
+        let mapBounds = { minX: -500, maxX: 2500, minY: -500, maxY: 2500 };
+
+        function updateBounds(bots, items) {
+            const allPoints = [];
+            bots.forEach(b => allPoints.push({ x: b.x, y: b.y }));
+            (items || []).forEach(i => allPoints.push({ x: i.x, y: i.y }));
+            if (allPoints.length < 2) return;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            allPoints.forEach(p => {
+                if (p.x < minX) minX = p.x;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.y > maxY) maxY = p.y;
+            });
+            // Add 15% padding
+            const padX = Math.max((maxX - minX) * 0.15, 200);
+            const padY = Math.max((maxY - minY) * 0.15, 200);
+            // Smooth transition — blend toward new bounds
+            mapBounds.minX = mapBounds.minX * 0.9 + (minX - padX) * 0.1;
+            mapBounds.maxX = mapBounds.maxX * 0.9 + (maxX + padX) * 0.1;
+            mapBounds.minY = mapBounds.minY * 0.9 + (minY - padY) * 0.1;
+            mapBounds.maxY = mapBounds.maxY * 0.9 + (maxY + padY) * 0.1;
+        }
 
         function mapToCanvas(x, y) {
             const w = canvas.width / (window.devicePixelRatio || 1);
             const h = 600;
             const pad = 60;
-            const cx = pad + ((x - MAP_MIN_X) / (MAP_MAX_X - MAP_MIN_X)) * (w - pad * 2);
-            const cy = pad + ((MAP_MAX_Y - y) / (MAP_MAX_Y - MAP_MIN_Y)) * (h - pad * 2);
+            const cx = pad + ((x - mapBounds.minX) / (mapBounds.maxX - mapBounds.minX)) * (w - pad * 2);
+            const cy = pad + ((mapBounds.maxY - y) / (mapBounds.maxY - mapBounds.minY)) * (h - pad * 2);
             return [cx, cy];
         }
 
-        function drawRadar(bots) {
+        // Item type colors and shapes
+        const ITEM_COLORS = {
+            health: "#00FF88",
+            armor: "#FFB800",
+            weapon: "#FF6A00",
+            ammo: "#888",
+            unknown: "#555",
+        };
+        const ITEM_ICONS = {
+            health: "+",
+            armor: "A",
+            weapon: "W",
+            ammo: ".",
+        };
+
+        function drawRadar(bots, items) {
             const w = canvas.width / (window.devicePixelRatio || 1);
             const h = 600;
             const isDark = darkMode;
@@ -256,12 +290,42 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            if (bots.length === 0) {
+            if (bots.length === 0 && (!items || items.length === 0)) {
                 ctx.fillStyle = isDark ? "#555" : "#999";
                 ctx.font = "16px 'Instrument Sans', sans-serif";
                 ctx.textAlign = "center";
                 ctx.fillText("No active bots — start a match or tournament", w / 2, h / 2);
                 return;
+            }
+
+            // Draw discovered items (map landmarks)
+            if (items && items.length > 0) {
+                items.forEach(item => {
+                    const [ix, iy] = mapToCanvas(item.x, item.y);
+                    const color = ITEM_COLORS[item.type] || ITEM_COLORS.unknown;
+                    const icon = ITEM_ICONS[item.type] || "?";
+
+                    // Soft glow for items
+                    const glow = ctx.createRadialGradient(ix, iy, 0, ix, iy, 12);
+                    glow.addColorStop(0, color + "22");
+                    glow.addColorStop(1, color + "00");
+                    ctx.fillStyle = glow;
+                    ctx.beginPath();
+                    ctx.arc(ix, iy, 12, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Item marker
+                    ctx.fillStyle = color + "88";
+                    ctx.beginPath();
+                    ctx.arc(ix, iy, 4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Icon label
+                    ctx.fillStyle = color;
+                    ctx.font = "bold 9px 'JetBrains Mono', monospace";
+                    ctx.textAlign = "center";
+                    ctx.fillText(icon, ix, iy - 7);
+                });
             }
 
             // Draw bots
@@ -331,15 +395,18 @@
                 const res = await fetch("/api/agent/live-positions");
                 if (!res.ok) return;
                 const data = await res.json();
-                drawRadar(data.bots || []);
-                updateLegend(data.bots || []);
+                const bots = data.bots || [];
+                const items = data.items || [];
+                updateBounds(bots, items);
+                drawRadar(bots, items);
+                updateLegend(bots);
             } catch (e) {
                 // silent
             }
         }
 
         // Initial draw + poll every 500ms
-        drawRadar([]);
+        drawRadar([], []);
         pollPositions();
         setInterval(pollPositions, 500);
     </script>

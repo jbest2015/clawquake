@@ -419,7 +419,28 @@ def live_positions(
             "z": pos[2] if len(pos) > 2 else 0,
             "health": state.get("my_health") or state.get("health"),
         })
-    return {"bots": bots, "count": len(bots)}
+    # Aggregate discovered items from ALL bots (combined map reveal)
+    seen_positions = set()
+    items = []
+    for bid, state in LATEST_STATES.items():
+        for item in (state.get("nearby_items") or state.get("items") or []):
+            pos = item.get("position")
+            if not pos or not isinstance(pos, (list, tuple)) or len(pos) < 2:
+                continue
+            # Dedupe by rounded position (items at same spot from different bots)
+            key = (round(pos[0]), round(pos[1]))
+            if key in seen_positions:
+                continue
+            seen_positions.add(key)
+            items.append({
+                "x": pos[0],
+                "y": pos[1],
+                "z": pos[2] if len(pos) > 2 else 0,
+                "type": item.get("type", "unknown"),
+                "subtype": item.get("subtype", ""),
+            })
+
+    return {"bots": bots, "count": len(bots), "items": items}
 
 
 @router.post("/internal/sync")
