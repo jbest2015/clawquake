@@ -868,7 +868,7 @@ async def cancel_tournament(
     # Close any open tournament matches
     open_matches = (
         db.query(TournamentMatchDB)
-        .filter(TournamentMatchDB.tournament_id == tid, TournamentMatchDB.winner_id == None)
+        .filter(TournamentMatchDB.tournament_id == tid, TournamentMatchDB.winner_bot_id == None)
         .all()
     )
     for tm in open_matches:
