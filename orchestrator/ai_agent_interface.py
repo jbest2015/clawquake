@@ -54,6 +54,23 @@ ACTION_QUEUES: Dict[int, List[Dict[str, Any]]] = {}
 
 MAX_QUEUE_SIZE = 256
 
+# ── Fog of War ────────────────────────────────────────────────────
+# Perception range: 2D (XY) distance + Z band filter.
+# Bots can only "hear" other bots on the same floor within a radius.
+FOW_XY_RADIUS = 800     # horizontal hearing range in game units
+FOW_Z_BAND = 128        # vertical band — ±128 units (roughly one floor)
+
+
+def _is_perceivable(my_pos, other_pos):
+    """Check if other_pos is within fog-of-war perception range of my_pos."""
+    if not my_pos or not other_pos:
+        return False
+    dx = my_pos[0] - other_pos[0]
+    dy = my_pos[1] - other_pos[1]
+    xy_dist = (dx * dx + dy * dy) ** 0.5
+    dz = abs(my_pos[2] - other_pos[2]) if len(my_pos) > 2 and len(other_pos) > 2 else 0
+    return xy_dist < FOW_XY_RADIUS and dz < FOW_Z_BAND
+
 
 class ActionRequest(BaseModel):
     action: str
@@ -130,6 +147,22 @@ def _observe_for_bot(bot_id: int) -> Dict[str, Any]:
     state = LATEST_STATES.get(bot_id)
     if not state:
         return {"status": "waiting_for_connection", "bot_id": bot_id}
+
+    # Apply fog-of-war to the players list
+    my_pos = state.get("my_position") or state.get("position")
+    players = state.get("players")
+    if my_pos and players:
+        filtered = []
+        for p in players:
+            p_pos = p.get("position")
+            if p_pos and _is_perceivable(my_pos, p_pos):
+                filtered.append(p)
+        # Return a copy with filtered players
+        result = dict(state)
+        result["players"] = filtered
+        result["player_count"] = len(filtered)
+        return result
+
     return state
 
 
@@ -347,9 +380,12 @@ def act(
 
 
 @router.get("/live-positions")
-def live_positions(db: Session = Depends(get_db)):
-    """Public endpoint: returns all active bot positions for the overhead radar."""
-    # Look up bot names from the DB for any active bots
+def live_positions(
+    bot_id: Optional[int] = Query(default=None, description="Your bot ID for fog-of-war filtering"),
+    db: Session = Depends(get_db),
+):
+    """Returns active bot positions. If bot_id is given, applies fog-of-war:
+    only shows bots within perception range (800 XY units, ±128 Z)."""
     active_ids = list(LATEST_STATES.keys())
     bot_names = {}
     if active_ids:
@@ -357,18 +393,32 @@ def live_positions(db: Session = Depends(get_db)):
         for bot in db.query(BotDB).filter(BotDB.id.in_(active_ids)).all():
             bot_names[bot.id] = bot.name
 
+    # Get requesting bot's position for fog-of-war filtering
+    my_pos = None
+    if bot_id is not None:
+        my_state = LATEST_STATES.get(bot_id)
+        if my_state:
+            my_pos = my_state.get("my_position") or my_state.get("position")
+
     bots = []
-    for bot_id, state in LATEST_STATES.items():
+    for bid, state in LATEST_STATES.items():
         pos = state.get("my_position") or state.get("position") or state.get("pos")
-        if pos and isinstance(pos, (list, tuple)) and len(pos) >= 2:
-            bots.append({
-                "bot_id": bot_id,
-                "name": bot_names.get(bot_id) or state.get("bot_name") or state.get("name") or f"Bot {bot_id}",
-                "x": pos[0],
-                "y": pos[1],
-                "z": pos[2] if len(pos) > 2 else 0,
-                "health": state.get("my_health") or state.get("health"),
-            })
+        if not pos or not isinstance(pos, (list, tuple)) or len(pos) < 2:
+            continue
+
+        # Always include the requesting bot's own position
+        if bot_id is not None and bid != bot_id:
+            if my_pos and not _is_perceivable(my_pos, pos):
+                continue
+
+        bots.append({
+            "bot_id": bid,
+            "name": bot_names.get(bid) or state.get("bot_name") or state.get("name") or f"Bot {bid}",
+            "x": pos[0],
+            "y": pos[1],
+            "z": pos[2] if len(pos) > 2 else 0,
+            "health": state.get("my_health") or state.get("health"),
+        })
     return {"bots": bots, "count": len(bots)}
 
 
@@ -443,10 +493,10 @@ async def agent_stream(
     await websocket.accept()
     logger.info("External agent connected for bot %d", bot_id)
 
-    # Send initial state snapshot
+    # Send initial state snapshot (fog-of-war filtered)
     initial = LATEST_STATES.get(bot_id)
     if initial:
-        await websocket.send_json({"type": "state_snapshot", "state": initial})
+        await websocket.send_json({"type": "state_snapshot", "state": _observe_for_bot(bot_id)})
 
     # Subscribe to telemetry
     queue = await telemetry_hub.subscribe(bot_id)
