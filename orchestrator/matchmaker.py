@@ -443,17 +443,12 @@ class MatchMaker:
             match = db.query(MatchDB).filter(MatchDB.id == match_id).first()
             map_name = match.map_name if match else DEFAULT_MAP
             if self.rcon_pool:
-                # Find which server we're using and send RCON map change
                 for sid, srv in self.rcon_pool.servers.items():
                     ws_host = srv.get("ws_host", srv.get("host", ""))
                     if ws_host and ws_host in server_url:
                         logger.info(f"Match {match_id}: RCON map {map_name} on {sid}")
-                        # Disable warmup/countdown before map change so they persist
-                        self.rcon_pool.send_rcon(sid, "g_doWarmup 0")
-                        self.rcon_pool.send_rcon(sid, "g_warmup 0")
-                        self.rcon_pool.send_rcon(sid, "g_countdown 0")
                         self.rcon_pool.send_rcon(sid, f"map {map_name}")
-                        await asyncio.sleep(3)  # Wait for map load
+                        await asyncio.sleep(3)
                         break
 
             # Launch all bots
