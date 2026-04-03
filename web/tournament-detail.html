@@ -1090,9 +1090,27 @@
                         return;
                     }
 
-                    // Map bounds
-                    const MX0 = -1500, MX1 = 3000, MY0 = -2500, MY1 = 3500;
+                    // Auto-calculate bounds from bots + items
+                    const items = data.items || [];
+                    const allPts = bots.map(b => ({x: b.x, y: b.y})).concat(items.map(i => ({x: i.x, y: i.y})));
+                    let MX0 = -500, MX1 = 2500, MY0 = -500, MY1 = 2500;
+                    if (allPts.length >= 2) {
+                        MX0 = Math.min(...allPts.map(p=>p.x)) - 200;
+                        MX1 = Math.max(...allPts.map(p=>p.x)) + 200;
+                        MY0 = Math.min(...allPts.map(p=>p.y)) - 200;
+                        MY1 = Math.max(...allPts.map(p=>p.y)) + 200;
+                    }
                     const pad = 40;
+
+                    // Draw items (map landmarks)
+                    items.forEach(item => {
+                        const ix = pad + ((item.x - MX0) / (MX1 - MX0)) * (w - pad * 2);
+                        const iy = pad + ((MY1 - item.y) / (MY1 - MY0)) * (h - pad * 2);
+                        rctx.fillStyle = item.type === 'health' ? '#00FF8844' : item.type === 'armor' ? '#FFB80044' : item.type === 'weapon' ? '#FF6A0044' : '#6A6A7A44';
+                        rctx.beginPath();
+                        rctx.arc(ix, iy, 4, 0, Math.PI * 2);
+                        rctx.fill();
+                    });
 
                     bots.forEach((bot) => {
                         const color = getRadarColor(bot.name);
