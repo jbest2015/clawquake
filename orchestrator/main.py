@@ -772,6 +772,18 @@ def join_tournament(
     success = system.add_participant(tid, join.bot_id)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to join (already present or tournament active)")
+
+    # Auto-ready sparring bots (name starts with 'spar')
+    if bot.name.startswith("spar"):
+        participant = (
+            db.query(TournamentParticipantDB)
+            .filter_by(tournament_id=tid, bot_id=join.bot_id)
+            .first()
+        )
+        if participant:
+            participant.ready = True
+            db.commit()
+
     return {"joined": True, "bot": bot.name, "participants": current_count + 1, "max": max_p}
 
 
