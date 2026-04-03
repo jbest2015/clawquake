@@ -207,6 +207,22 @@ class GameView:
             'nearest_enemy_distance': round(nearest_dist, 1) if nearest else None,
         }
 
+        # Add discovered items (for minimap reveal)
+        try:
+            raw_items = self.items
+            if raw_items:
+                state['items'] = [
+                    {
+                        'type': it.get('type', 'unknown'),
+                        'subtype': it.get('subtype', ''),
+                        'position': list(it['position']) if it.get('position') else None,
+                        'entity_num': it.get('entity_num'),
+                    }
+                    for it in raw_items if it.get('position')
+                ]
+        except Exception:
+            pass
+
         # Add ammo/armor from playerstate if available
         ps = self._bot.client.player_state
         if ps:
