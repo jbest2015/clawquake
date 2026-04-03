@@ -1178,19 +1178,28 @@
                             rctx.fillRect(bx, by, bw * hp, bh);
                         }
 
-                        // Ammo bar (below health bar)
+                        // Ammo bar — show total ammo across all real weapons (skip MG infinite)
                         if (bot.ammo && Array.isArray(bot.ammo)) {
-                            // Show ammo for current weapon (weapon IDs: 2=MG, 3=SG, 4=GL, 5=RL, 6=LG, 7=RG, 8=PG)
-                            const wpMap = {machinegun:2, shotgun:3, grenade_launcher:4, rocket_launcher:5, lightning:6, railgun:7, plasmagun:8};
-                            const wpIdx = wpMap[wpShort] || 2;
-                            const ammoVal = bot.ammo[wpIdx] || 0;
-                            const maxAmmo = wpIdx === 2 ? 200 : 50;
-                            const ammoPct = Math.max(0, Math.min(1, ammoVal / maxAmmo));
+                            // Sum ammo for real weapons (indices 3-8: SG, GL, RL, LG, RG, PG)
+                            let totalAmmo = 0;
+                            let maxTotal = 0;
+                            const maxPerWp = [0,0,0,10,10,10,100,10,50]; // SG,GL,RL,LG,RG,PG maxes
+                            for (let wi = 3; wi <= 8; wi++) {
+                                const val = bot.ammo[wi] || 0;
+                                if (val > 0 && val < 65535) { totalAmmo += val; }
+                                maxTotal += maxPerWp[wi] || 50;
+                            }
+                            const ammoPct = maxTotal > 0 ? Math.max(0, Math.min(1, totalAmmo / maxTotal)) : 0;
                             const abw = 30, abh = 2, abx = cx - abw / 2, aby = cy + r + 9;
                             rctx.fillStyle = "#222";
                             rctx.fillRect(abx, aby, abw, abh);
-                            rctx.fillStyle = "#FFB800";
+                            rctx.fillStyle = ammoPct > 0.3 ? "#FFB800" : "#FF3B30";
                             rctx.fillRect(abx, aby, abw * ammoPct, abh);
+                            // Ammo count label
+                            rctx.fillStyle = "#666";
+                            rctx.font = "7px 'JetBrains Mono', monospace";
+                            rctx.textAlign = "center";
+                            rctx.fillText(totalAmmo > 0 ? totalAmmo : "dry", cx, aby + 9);
                         }
                     });
 
