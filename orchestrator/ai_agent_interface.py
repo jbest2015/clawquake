@@ -429,7 +429,7 @@ def live_positions(
             "yaw": yaw,
             "weapon": weapon,
             "ammo": ammo,
-            "firing": state.get("player_count", 0) > 0,
+            "firing": bool(state.get("firing", False)),
         })
     # Aggregate discovered items from ALL bots (combined map reveal)
     seen_positions = set()

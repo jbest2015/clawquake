@@ -318,6 +318,8 @@ async def run(args):
         # Stream telemetry to orchestrator via WebSocket
         if telemetry:
             state = game.to_dict() if hasattr(game, 'to_dict') else {}
+            # Add firing state from previous tick's actions
+            state['firing'] = getattr(tracker, '_last_was_attacking', False)
             await telemetry.send_telemetry(state, tracker.ticks)
 
             # Inject commands from external agents
@@ -352,6 +354,9 @@ async def run(args):
                     logger.info(f"  PLAYER: {p.get('name','?')} pos={[round(x,1) for x in p['position']]} dist={game.distance_to(p['position']):.0f}")
             if actions and has_attack:
                 logger.info(f"  ACTIONS: {actions[:5]}")
+
+        # Track firing state for telemetry
+        tracker._last_was_attacking = bool(actions and any('attack' in a for a in actions))
 
         if actions:
             agent.send_actions(actions)
