@@ -1106,7 +1106,7 @@
                     items.forEach(item => {
                         const ix = pad + ((item.x - MX0) / (MX1 - MX0)) * (w - pad * 2);
                         const iy = pad + ((MY1 - item.y) / (MY1 - MY0)) * (h - pad * 2);
-                        rctx.fillStyle = item.type === 'health' ? '#00FF8844' : item.type === 'armor' ? '#FFB80044' : item.type === 'weapon' ? '#FF6A0044' : '#6A6A7A44';
+                        rctx.fillStyle = item.type === 'health' ? '#00FF88CC' : item.type === 'armor' ? '#FFB800CC' : item.type === 'weapon' ? '#FF6A00CC' : '#9999AACC';
                         rctx.beginPath();
                         rctx.arc(ix, iy, 4, 0, Math.PI * 2);
                         rctx.fill();
@@ -1117,6 +1117,28 @@
                         const cx = pad + ((bot.x - MX0) / (MX1 - MX0)) * (w - pad * 2);
                         const cy = pad + ((MY1 - bot.y) / (MY1 - MY0)) * (h - pad * 2);
                         const r = 7;
+
+                        // Firing indicator — line from bot in aim direction
+                        if (bot.firing && bot.yaw != null) {
+                            const rad = (bot.yaw * Math.PI) / 180;
+                            const len = 30;
+                            const fx = cx + Math.cos(rad) * len;
+                            const fy = cy - Math.sin(rad) * len;
+                            rctx.strokeStyle = "#FF3B30";
+                            rctx.lineWidth = 2.5;
+                            rctx.beginPath();
+                            rctx.moveTo(cx, cy);
+                            rctx.lineTo(fx, fy);
+                            rctx.stroke();
+                            // Muzzle flash
+                            const flash = rctx.createRadialGradient(fx, fy, 0, fx, fy, 6);
+                            flash.addColorStop(0, "#FF6A00CC");
+                            flash.addColorStop(1, "#FF6A0000");
+                            rctx.fillStyle = flash;
+                            rctx.beginPath();
+                            rctx.arc(fx, fy, 6, 0, Math.PI * 2);
+                            rctx.fill();
+                        }
 
                         // Glow
                         const grad = rctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
@@ -1136,20 +1158,39 @@
                         rctx.lineWidth = 1.5;
                         rctx.stroke();
 
-                        // Name
+                        // Name + weapon
                         rctx.fillStyle = "#E8E4DE";
                         rctx.font = "bold 10px 'Space Grotesk', sans-serif";
                         rctx.textAlign = "center";
-                        rctx.fillText(bot.name, cx, cy - r - 5);
+                        const wpShort = (bot.weapon || "").replace("WP_", "").toLowerCase();
+                        rctx.fillText(bot.name, cx, cy - r - 12);
+                        rctx.font = "8px 'JetBrains Mono', monospace";
+                        rctx.fillStyle = "#888";
+                        rctx.fillText(wpShort, cx, cy - r - 3);
 
                         // Health bar
                         if (bot.health != null) {
-                            const bw = 24, bh = 3, bx = cx - bw / 2, by = cy + r + 4;
+                            const bw = 30, bh = 3, bx = cx - bw / 2, by = cy + r + 4;
                             const hp = Math.max(0, Math.min(1, bot.health / 100));
                             rctx.fillStyle = "#333";
                             rctx.fillRect(bx, by, bw, bh);
                             rctx.fillStyle = hp > 0.6 ? "#00FF88" : hp > 0.3 ? "#FFB800" : "#FF3B30";
                             rctx.fillRect(bx, by, bw * hp, bh);
+                        }
+
+                        // Ammo bar (below health bar)
+                        if (bot.ammo && Array.isArray(bot.ammo)) {
+                            // Show ammo for current weapon (weapon IDs: 2=MG, 3=SG, 4=GL, 5=RL, 6=LG, 7=RG, 8=PG)
+                            const wpMap = {machinegun:2, shotgun:3, grenade_launcher:4, rocket_launcher:5, lightning:6, railgun:7, plasmagun:8};
+                            const wpIdx = wpMap[wpShort] || 2;
+                            const ammoVal = bot.ammo[wpIdx] || 0;
+                            const maxAmmo = wpIdx === 2 ? 200 : 50;
+                            const ammoPct = Math.max(0, Math.min(1, ammoVal / maxAmmo));
+                            const abw = 30, abh = 2, abx = cx - abw / 2, aby = cy + r + 9;
+                            rctx.fillStyle = "#222";
+                            rctx.fillRect(abx, aby, abw, abh);
+                            rctx.fillStyle = "#FFB800";
+                            rctx.fillRect(abx, aby, abw * ammoPct, abh);
                         }
                     });
 

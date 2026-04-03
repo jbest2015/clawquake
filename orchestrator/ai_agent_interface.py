@@ -411,6 +411,14 @@ def live_positions(
             if my_pos and not _is_perceivable(my_pos, pos):
                 continue
 
+        # Extract viewangles for firing direction
+        angles = state.get("my_viewangles") or [0, 0, 0]
+        yaw = angles[1] if len(angles) > 1 else 0
+
+        # Detect firing from stats — ammo decrease or attack flag in last sync
+        ammo = state.get("my_ammo") or []
+        weapon = state.get("my_weapon") or "WP_MACHINEGUN"
+
         bots.append({
             "bot_id": bid,
             "name": bot_names.get(bid) or state.get("bot_name") or state.get("name") or f"Bot {bid}",
@@ -418,6 +426,10 @@ def live_positions(
             "y": pos[1],
             "z": pos[2] if len(pos) > 2 else 0,
             "health": state.get("my_health") or state.get("health"),
+            "yaw": yaw,
+            "weapon": weapon,
+            "ammo": ammo,
+            "firing": state.get("player_count", 0) > 0,
         })
     # Aggregate discovered items from ALL bots (combined map reveal)
     seen_positions = set()

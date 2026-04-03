@@ -317,9 +317,9 @@
                     ctx.fill();
 
                     // Item marker
-                    ctx.fillStyle = color + "88";
+                    ctx.fillStyle = color + "CC";
                     ctx.beginPath();
-                    ctx.arc(ix, iy, 4, 0, Math.PI * 2);
+                    ctx.arc(ix, iy, 5, 0, Math.PI * 2);
                     ctx.fill();
 
                     // Icon label
@@ -335,6 +335,28 @@
                 const color = getBotColor(bot.name);
                 const [cx, cy] = mapToCanvas(bot.x, bot.y);
                 const radius = 8;
+
+                // Firing indicator — line from bot in aim direction
+                if (bot.firing && bot.yaw != null) {
+                    const rad = (bot.yaw * Math.PI) / 180;
+                    const len = 40;
+                    const fx = cx + Math.cos(rad) * len;
+                    const fy = cy - Math.sin(rad) * len;
+                    ctx.strokeStyle = "#FF3B30";
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(fx, fy);
+                    ctx.stroke();
+                    // Muzzle flash
+                    const flash = ctx.createRadialGradient(fx, fy, 0, fx, fy, 8);
+                    flash.addColorStop(0, "#FF6A00CC");
+                    flash.addColorStop(1, "#FF6A0000");
+                    ctx.fillStyle = flash;
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
                 // Glow
                 const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 3);
@@ -356,26 +378,43 @@
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
-                // Name label
+                // Name + weapon label
+                const wpShort = (bot.weapon || "").replace("WP_", "").toLowerCase();
                 ctx.fillStyle = isDark ? "#E8E4DE" : "#222";
                 ctx.font = "bold 11px 'Space Grotesk', sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText(bot.name, cx, cy - radius - 6);
+                ctx.fillText(bot.name, cx, cy - radius - 14);
+                ctx.font = "9px 'JetBrains Mono', monospace";
+                ctx.fillStyle = isDark ? "#888" : "#666";
+                ctx.fillText(wpShort, cx, cy - radius - 4);
 
-                // Health bar (if available)
+                // Health bar
                 if (bot.health != null) {
-                    const barW = 30;
-                    const barH = 3;
+                    const barW = 36, barH = 3;
                     const barX = cx - barW / 2;
                     const barY = cy + radius + 5;
                     const hpPct = Math.max(0, Math.min(1, bot.health / 100));
-
                     ctx.fillStyle = isDark ? "#333" : "#ccc";
                     ctx.fillRect(barX, barY, barW, barH);
-
                     const hpColor = hpPct > 0.6 ? "#00FF88" : hpPct > 0.3 ? "#FFB800" : "#FF3B30";
                     ctx.fillStyle = hpColor;
                     ctx.fillRect(barX, barY, barW * hpPct, barH);
+                }
+
+                // Ammo bar (below health)
+                if (bot.ammo && Array.isArray(bot.ammo)) {
+                    const wpMap = {machinegun:2, shotgun:3, grenade_launcher:4, rocket_launcher:5, lightning:6, railgun:7, plasmagun:8};
+                    const wpIdx = wpMap[wpShort] || 2;
+                    const ammoVal = bot.ammo[wpIdx] || 0;
+                    const maxAmmo = wpIdx === 2 ? 200 : 50;
+                    const ammoPct = Math.max(0, Math.min(1, ammoVal / maxAmmo));
+                    const abW = 36, abH = 2;
+                    const abX = cx - abW / 2;
+                    const abY = cy + radius + 10;
+                    ctx.fillStyle = isDark ? "#222" : "#ddd";
+                    ctx.fillRect(abX, abY, abW, abH);
+                    ctx.fillStyle = "#FFB800";
+                    ctx.fillRect(abX, abY, abW * ammoPct, abH);
                 }
             });
         }
