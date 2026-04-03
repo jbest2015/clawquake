@@ -1183,8 +1183,8 @@
                             // Sum ammo for real weapons (indices 3-8: SG, GL, RL, LG, RG, PG)
                             let totalAmmo = 0;
                             let maxTotal = 0;
-                            const maxPerWp = [0,0,0,10,10,10,100,10,50]; // SG,GL,RL,LG,RG,PG maxes
-                            for (let wi = 3; wi <= 8; wi++) {
+                            const maxPerWp = [0,0,100,10,10,10,100,10,50]; // MG,SG,GL,RL,LG,RG,PG maxes
+                            for (let wi = 2; wi <= 8; wi++) {
                                 const val = bot.ammo[wi] || 0;
                                 if (val > 0 && val < 65535) { totalAmmo += val; }
                                 maxTotal += maxPerWp[wi] || 50;
