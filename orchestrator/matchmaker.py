@@ -448,6 +448,10 @@ class MatchMaker:
                     ws_host = srv.get("ws_host", srv.get("host", ""))
                     if ws_host and ws_host in server_url:
                         logger.info(f"Match {match_id}: RCON map {map_name} on {sid}")
+                        # Disable warmup/countdown before map change so they persist
+                        self.rcon_pool.send_rcon(sid, "g_doWarmup 0")
+                        self.rcon_pool.send_rcon(sid, "g_warmup 0")
+                        self.rcon_pool.send_rcon(sid, "g_countdown 0")
                         self.rcon_pool.send_rcon(sid, f"map {map_name}")
                         await asyncio.sleep(3)  # Wait for map load
                         break
