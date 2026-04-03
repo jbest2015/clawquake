@@ -327,6 +327,14 @@ async def run(args):
 
         actions = await strategy.tick(bot_obj, game)
 
+        # Warmup fix: always send attack during first 100 ticks to break
+        # out of PM_FREEZE countdown state. All strategies benefit from this.
+        if tracker.ticks < 100:
+            if not actions:
+                actions = []
+            if not any('attack' in a for a in actions):
+                actions.append("attack")
+
         # DEBUG: Log game state and actions every 2 seconds
         if tracker.ticks % 40 == 1:
             players = game.players
