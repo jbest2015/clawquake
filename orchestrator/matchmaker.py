@@ -439,16 +439,27 @@ class MatchMaker:
                 logger.error(f"Match {match_id}: no valid bots found")
                 return self.finalize_match(match_id)
 
-            # Change map via RCON before launching bots
+            # Change map via RCON only if the server is on a different map.
+            # Reloading the same map causes a warmup freeze in Q3.
             match = db.query(MatchDB).filter(MatchDB.id == match_id).first()
             map_name = match.map_name if match else DEFAULT_MAP
             if self.rcon_pool:
                 for sid, srv in self.rcon_pool.servers.items():
                     ws_host = srv.get("ws_host", srv.get("host", ""))
                     if ws_host and ws_host in server_url:
-                        logger.info(f"Match {match_id}: RCON map {map_name} on {sid}")
-                        self.rcon_pool.send_rcon(sid, f"map {map_name}")
-                        await asyncio.sleep(3)
+                        # Check current map via RCON status
+                        status = self.rcon_pool.send_rcon(sid, "status")
+                        current_map = ""
+                        for line in status.split("\n"):
+                            if line.startswith("map:"):
+                                current_map = line.split(":", 1)[1].strip()
+                                break
+                        if current_map != map_name:
+                            logger.info(f"Match {match_id}: RCON map {map_name} on {sid} (was {current_map})")
+                            self.rcon_pool.send_rcon(sid, f"map {map_name}")
+                            await asyncio.sleep(3)
+                        else:
+                            logger.info(f"Match {match_id}: server already on {map_name}, skipping map change")
                         break
 
             # Launch all bots
