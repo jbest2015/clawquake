@@ -210,6 +210,12 @@
             background: rgba(255, 255, 255, 0.03);
         }
 
+        .status-pill.cancelled {
+            color: #FF3B30;
+            border: 1px solid rgba(255, 59, 48, 0.4);
+            background: rgba(255, 59, 48, 0.08);
+        }
+
         /* Pulsing dot */
         .pulse-dot {
             width: 7px;
@@ -529,7 +535,7 @@
                 <div class="tournament-card">
                     <div class="card-top">
                         <div class="card-name">${escapeHtml(t.name)}</div>
-                        <span class="status-pill completed">Completed</span>
+                        <span class="status-pill ${t.status === 'cancelled' ? 'cancelled' : 'completed'}">${t.status === 'cancelled' ? 'Cancelled' : 'Completed'}</span>
                     </div>
                     ${t.description ? `<div class="card-desc">${escapeHtml(t.description)}</div>` : ""}
                     ${t.winner_name ? `
@@ -571,7 +577,7 @@
 
             const open = data.filter(t => t.status === "pending");
             const live = data.filter(t => t.status === "active");
-            const completed = data.filter(t => t.status === "completed");
+            const completed = data.filter(t => t.status === "completed" || t.status === "cancelled");
 
             document.getElementById("open-count").textContent = open.length;
             document.getElementById("live-count").textContent = live.length;

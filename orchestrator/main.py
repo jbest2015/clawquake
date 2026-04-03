@@ -848,6 +848,54 @@ async def start_tournament(
     _ensure_tournament_runner(tid)
     return {"started": True, "participants": ready_count, "removed_unready": removed_names}
 
+@app.delete("/api/tournaments/{tid}/cancel")
+async def cancel_tournament(
+    tid: int,
+    user: UserDB = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    tournament = db.query(TournamentDB).filter(TournamentDB.id == tid).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if not user.is_admin and tournament.created_by_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Tournament owner or admin required")
+    if tournament.status == "completed" or tournament.status == "cancelled":
+        raise HTTPException(status_code=400, detail=f"Tournament already {tournament.status}")
+
+    tournament.status = "cancelled"
+    tournament.ended_at = datetime.utcnow()
+
+    # Close any open tournament matches
+    open_matches = (
+        db.query(TournamentMatchDB)
+        .filter(TournamentMatchDB.tournament_id == tid, TournamentMatchDB.winner_id == None)
+        .all()
+    )
+    for tm in open_matches:
+        if tm.game_match_id:
+            game_match = db.query(MatchDB).filter(MatchDB.id == tm.game_match_id).first()
+            if game_match and not game_match.ended_at:
+                game_match.ended_at = datetime.utcnow()
+
+    db.commit()
+
+    # Cancel the tournament runner task
+    task = tournament_tasks.pop(tid, None)
+    if task:
+        task.cancel()
+
+    # Kill any running bot processes for this tournament's active matches
+    if matchmaker and matchmaker.process_manager:
+        for tm in open_matches:
+            if tm.game_match_id:
+                try:
+                    matchmaker.process_manager.cleanup_match(tm.game_match_id)
+                except Exception:
+                    pass
+
+    return {"cancelled": True, "tournament_id": tid}
+
+
 @app.get("/api/tournaments/{tid}")
 def get_tournament(
     tid: int,

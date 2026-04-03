@@ -819,8 +819,16 @@
                     : `<button class="btn btn-primary" disabled style="font-size:1rem;padding:0.7rem 1.8rem;">Need 2+ bots</button>`;
             }
 
+            if ((info.status === "pending" || info.status === "active") && isOwner) {
+                actionsHtml += `<button class="btn btn-danger" onclick="cancelTournament()" style="font-size:1rem;padding:0.7rem 1.8rem;background:#FF3B30;color:#fff;border:none;border-radius:6px;cursor:pointer;">Cancel Tournament</button>`;
+            }
+
             if (info.status === "completed" && info.winner_name) {
                 actionsHtml += `<div class="champion-badge">${escapeHtml(info.winner_name)}</div>`;
+            }
+
+            if (info.status === "cancelled") {
+                actionsHtml += `<span style="color:#FF3B30;font-weight:700;font-size:1.1rem;">Cancelled</span>`;
             }
 
             actionsHtml += `<button class="btn btn-outline" onclick="refreshAll()">Refresh</button>`;
@@ -1276,6 +1284,19 @@
                 return;
             }
 
+            await loadTournament();
+        }
+
+        async function cancelTournament() {
+            if (!confirm("Are you sure? This will end all active matches and cancel the tournament.")) return;
+            const id = getTournamentId();
+            const { response, data } = await fetchJson(`/api/tournaments/${id}/cancel`, {
+                method: "DELETE",
+            });
+            if (!response.ok) {
+                alert(data.detail || "Could not cancel tournament.");
+                return;
+            }
             await loadTournament();
         }
 
