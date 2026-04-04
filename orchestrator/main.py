@@ -26,6 +26,7 @@ from models import (
     UserCreate, UserLogin, UserResponse, TokenResponse,
     MatchResponse, BotResponse, ServerStatus,
     MatchResultReport, MatchDetailResponse,
+    TelemetryRecordingDB,
 )
 from routes_bots import router as bots_router
 from routes_agents import router as agents_router
@@ -44,6 +45,7 @@ from models import TournamentMatchDB
 from ai_agent_interface import router as ai_agent_router
 import ai_agent_interface
 from telemetry_hub import TelemetryHub
+from telemetry_recorder import TelemetryRecorder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawquake")
@@ -79,12 +81,16 @@ process_manager = BotProcessManager(
     internal_secret=_internal_secret,
 )
 
+telemetry_hub = TelemetryHub()
+telemetry_recorder = TelemetryRecorder(db_session_factory=SessionLocal)
+telemetry_hub.register_hook(telemetry_recorder.on_frame)
+
 matchmaker = MatchMaker(
     process_manager=process_manager,
     rcon_pool=rcon_pool,
+    telemetry_recorder=telemetry_recorder,
 )
 websocket_hub = WebSocketHub()
-telemetry_hub = TelemetryHub()
 ai_agent_interface.telemetry_hub = telemetry_hub
 event_queue: SimpleQueue[tuple[str, dict]] = SimpleQueue()
 websocket_publisher_task: asyncio.Task | None = None
@@ -669,6 +675,90 @@ def get_match_detail(
         participants=participant_data,
     )
 
+
+
+# ── Telemetry Retrieval Endpoints (Claude — Session 8) ────────
+
+@app.get("/api/matches/{match_id}/telemetry")
+def list_match_telemetry(match_id: int, db: Session = Depends(get_db)):
+    """List telemetry recordings for a match."""
+    recordings = (
+        db.query(TelemetryRecordingDB)
+        .filter(TelemetryRecordingDB.match_id == match_id)
+        .all()
+    )
+    return [
+        {
+            "bot_id": r.bot_id,
+            "bot_name": r.bot_name,
+            "tick_count": r.tick_count,
+            "duration_s": r.duration_s,
+            "file_size_bytes": r.file_size_bytes,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in recordings
+    ]
+
+
+@app.get("/api/matches/{match_id}/telemetry/{bot_id}")
+def get_match_telemetry(
+    match_id: int,
+    bot_id: int,
+    start_tick: Optional[int] = None,
+    end_tick: Optional[int] = None,
+    events_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Get full telemetry data for a bot in a match."""
+    rec = (
+        db.query(TelemetryRecordingDB)
+        .filter(TelemetryRecordingDB.match_id == match_id,
+                TelemetryRecordingDB.bot_id == bot_id)
+        .first()
+    )
+    if not rec:
+        raise HTTPException(status_code=404, detail="Telemetry recording not found")
+
+    data = telemetry_recorder.load_recording(rec.file_path)
+
+    # Optional tick range filter
+    if start_tick is not None or end_tick is not None:
+        frames = data.get("frames", [])
+        if start_tick is not None:
+            frames = [f for f in frames if f.get("tick", 0) >= start_tick]
+        if end_tick is not None:
+            frames = [f for f in frames if f.get("tick", 0) <= end_tick]
+        data["frames"] = frames
+
+    if events_only:
+        data.pop("frames", None)
+
+    return data
+
+
+@app.get("/api/matches/{match_id}/telemetry/{bot_id}/summary")
+def get_match_telemetry_summary(
+    match_id: int,
+    bot_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get computed telemetry summary/analytics for a bot in a match."""
+    rec = (
+        db.query(TelemetryRecordingDB)
+        .filter(TelemetryRecordingDB.match_id == match_id,
+                TelemetryRecordingDB.bot_id == bot_id)
+        .first()
+    )
+    if not rec:
+        raise HTTPException(status_code=404, detail="Telemetry recording not found")
+
+    data = telemetry_recorder.load_recording(rec.file_path)
+    return {
+        "match_id": match_id,
+        "bot_id": bot_id,
+        "bot_name": data.get("bot_name", ""),
+        "summary": data.get("summary", {}),
+    }
 
 
 # ── Tournament Endpoints (Anti-Gravity — Batch 3) ──────────────

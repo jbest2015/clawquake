@@ -315,14 +315,8 @@ async def run(args):
                     f"say Strategy updated to {strategy.name} v{strategy.version}!"
                 ])
 
-        # Stream telemetry to orchestrator via WebSocket
+        # Inject commands from external agents
         if telemetry:
-            state = game.to_dict() if hasattr(game, 'to_dict') else {}
-            # Add firing state from previous tick's actions
-            state['firing'] = getattr(tracker, '_last_was_attacking', False)
-            await telemetry.send_telemetry(state, tracker.ticks)
-
-            # Inject commands from external agents
             for cmd in telemetry.drain_commands():
                 if cmd:
                     agent.send_actions([cmd])
@@ -336,6 +330,14 @@ async def run(args):
                 actions = []
             if not any('attack' in a for a in actions):
                 actions.append("attack")
+
+        # Stream telemetry AFTER strategy.tick() so we capture actions taken
+        if telemetry:
+            state = game.to_dict() if hasattr(game, 'to_dict') else {}
+            state['firing'] = getattr(tracker, '_last_was_attacking', False)
+            state['actions_taken'] = list(actions) if actions else []
+            state['enemies_visible'] = len(game.players)
+            await telemetry.send_telemetry(state, tracker.ticks)
 
         # DEBUG: Log game state and actions every 2 seconds
         if tracker.ticks % 40 == 1:

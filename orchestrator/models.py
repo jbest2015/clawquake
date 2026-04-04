@@ -334,6 +334,21 @@ class TournamentResponse(BaseModel):
     match_duration: int = 300
     frag_limit: Optional[int] = None
 
+# ── Telemetry Recording Index (Claude — Session 8) ────────────
+
+class TelemetryRecordingDB(Base):
+    __tablename__ = "telemetry_recordings"
+    id = Column(Integer, primary_key=True, index=True)
+    match_id = Column(Integer, nullable=False, index=True)
+    bot_id = Column(Integer, nullable=False, index=True)
+    bot_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    tick_count = Column(Integer, default=0)
+    duration_s = Column(Float, default=0.0)
+    file_size_bytes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Adaptive Learner DB (Anti-Gravity — Batch 4) ────────────
 
 class OpponentProfileDB(Base):

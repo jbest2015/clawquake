@@ -53,6 +53,11 @@ class TelemetryHub:
         self._subscribers: dict[int, set[asyncio.Queue]] = {}
         self._dropped: dict[int, int] = {}  # per-subscriber dropped count
         self._lock = asyncio.Lock()
+        self._hooks: list = []  # Synchronous callbacks: fn(bot_id, frame)
+
+    def register_hook(self, fn) -> None:
+        """Register a synchronous hook called on every publish (e.g. telemetry recorder)."""
+        self._hooks.append(fn)
 
     async def publish(self, bot_id: int, frame: dict[str, Any]) -> None:
         """Publish a telemetry frame to all subscribers for a bot.
@@ -60,6 +65,13 @@ class TelemetryHub:
         If a subscriber's queue is full, the oldest frame is dropped
         and the dropped_frames counter is incremented.
         """
+        # Fire synchronous hooks (e.g. telemetry recorder) — just list.append, near-zero cost
+        for hook in self._hooks:
+            try:
+                hook(bot_id, frame)
+            except Exception:
+                logger.exception("Telemetry hook error for bot %d", bot_id)
+
         async with self._lock:
             queues = self._subscribers.get(bot_id)
             if not queues:

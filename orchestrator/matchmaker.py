@@ -119,10 +119,11 @@ class MatchMaker:
     """
 
     def __init__(self, db_session_factory=None, process_manager=None,
-                 rcon_pool=None):
+                 rcon_pool=None, telemetry_recorder=None):
         self.db_factory = db_session_factory or SessionLocal
         self.process_manager = process_manager  # Optional BotProcessManager
         self.rcon_pool = rcon_pool  # Optional RconPool
+        self.telemetry_recorder = telemetry_recorder  # Optional TelemetryRecorder
         self._running = False
         self._active_matches: dict[int, dict] = {}  # match_id -> match info
 
@@ -462,6 +463,11 @@ class MatchMaker:
                             logger.info(f"Match {match_id}: server already on {map_name}, skipping map change")
                         break
 
+            # Start telemetry recording
+            if self.telemetry_recorder:
+                rec_bots = [{"id": b["bot_id"], "name": b["bot_name"]} for b in bots_info]
+                self.telemetry_recorder.start_recording(match_id, rec_bots)
+
             # Launch all bots
             match_duration = duration if duration is not None else MATCH_DURATION
             self.process_manager.launch_match(
@@ -474,6 +480,13 @@ class MatchMaker:
             # Wait for all bots to finish
             status = await self.process_manager.wait_for_match(match_id)
             logger.info(f"Match {match_id}: all bots finished — {status}")
+
+            # Stop telemetry recording and write files
+            if self.telemetry_recorder:
+                try:
+                    await self.telemetry_recorder.stop_recording(match_id)
+                except Exception as e:
+                    logger.error(f"Match {match_id}: telemetry save error: {e}")
 
             # Finalize the match (ELO calculation)
             result = self.finalize_match(match_id)

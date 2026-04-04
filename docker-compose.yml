@@ -42,6 +42,7 @@ services:
     volumes:
       - ./strategies:/app/strategies:ro
       - ./results:/app/results
+      - ./telemetry:/app/telemetry
       - clawquake-data:/app/data
     depends_on:
       - gameserver-1
