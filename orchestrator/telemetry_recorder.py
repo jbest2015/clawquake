@@ -217,3 +217,163 @@ class TelemetryRecorder:
         """Load a gzipped telemetry file."""
         with gzip.open(file_path, "rt", encoding="utf-8") as f:
             return json.load(f)
+
+    def analyze_match(self, match_id: int) -> dict:
+        """Deep analysis of a completed match from telemetry data."""
+        from models import TelemetryRecordingDB, MatchDB, MatchParticipantDB, BotDB
+        db = self._db_factory()
+        try:
+            match = db.query(MatchDB).filter(MatchDB.id == match_id).first()
+            if not match:
+                return {"error": "Match not found"}
+
+            recordings = (
+                db.query(TelemetryRecordingDB)
+                .filter(TelemetryRecordingDB.match_id == match_id)
+                .all()
+            )
+            if not recordings:
+                return {"error": "No telemetry recordings for this match"}
+
+            participants = (
+                db.query(MatchParticipantDB)
+                .filter(MatchParticipantDB.match_id == match_id)
+                .all()
+            )
+            part_map = {p.bot_id: p for p in participants}
+
+            bot_analyses = []
+            for rec in recordings:
+                data = self.load_recording(rec.file_path)
+                frames = data.get("frames", [])
+                summary = data.get("summary", {})
+                part = part_map.get(rec.bot_id)
+
+                analysis = self._analyze_bot(rec.bot_name, rec.bot_id, frames, summary, part)
+                bot_analyses.append(analysis)
+
+            # Match-level analysis
+            duration = None
+            if match.ended_at and match.started_at:
+                duration = (match.ended_at - match.started_at).total_seconds()
+
+            return {
+                "match_id": match_id,
+                "map": match.map_name,
+                "winner": match.winner,
+                "duration_s": duration,
+                "bots": bot_analyses,
+                "match_insights": self._match_insights(bot_analyses),
+            }
+        finally:
+            db.close()
+
+    def _analyze_bot(self, bot_name: str, bot_id: int, frames: list, summary: dict, participant) -> dict:
+        """Per-bot deep analysis."""
+        total = len(frames)
+        if total == 0:
+            return {"bot_name": bot_name, "bot_id": bot_id, "error": "No frames"}
+
+        # Movement analysis
+        positions = []
+        stuck_ticks = 0
+        last_pos = None
+        for f in frames:
+            state = f.get("state", f)
+            pos = state.get("my_position")
+            if pos:
+                positions.append(pos)
+                if last_pos and all(abs(a - b) < 1.0 for a, b in zip(pos, last_pos)):
+                    stuck_ticks += 1
+                last_pos = pos
+
+        # Engagement windows: consecutive ticks with enemies visible
+        engagements = []
+        current_engagement = None
+        for i, f in enumerate(frames):
+            state = f.get("state", f)
+            enemies = state.get("players", [])
+            actions = f.get("actions_taken", state.get("actions_taken", []))
+            has_attack = any("attack" in a for a in actions)
+
+            if enemies:
+                if current_engagement is None:
+                    current_engagement = {"start_tick": i, "ticks": 0, "attack_ticks": 0, "enemies": []}
+                current_engagement["ticks"] += 1
+                if has_attack:
+                    current_engagement["attack_ticks"] += 1
+                for e in enemies:
+                    name = e.get("name", "?")
+                    if name not in current_engagement["enemies"]:
+                        current_engagement["enemies"].append(name)
+            else:
+                if current_engagement is not None:
+                    engagements.append(current_engagement)
+                    current_engagement = None
+        if current_engagement:
+            engagements.append(current_engagement)
+
+        # Firing efficiency
+        total_engagement_ticks = sum(e["ticks"] for e in engagements)
+        total_attack_ticks = sum(e["attack_ticks"] for e in engagements)
+        fire_rate = round(total_attack_ticks / total_engagement_ticks * 100, 1) if total_engagement_ticks else 0
+
+        # Position bounds
+        if positions:
+            xs = [p[0] for p in positions]
+            ys = [p[1] for p in positions]
+            area_covered = (max(xs) - min(xs)) * (max(ys) - min(ys))
+        else:
+            area_covered = 0
+
+        result = {
+            "bot_name": bot_name,
+            "bot_id": bot_id,
+            "total_ticks": total,
+            "summary": summary,
+            "movement": {
+                "stuck_ticks": stuck_ticks,
+                "stuck_pct": round(stuck_ticks / total * 100, 1),
+                "area_covered_sq_units": round(area_covered),
+                "unique_positions": len(set(tuple(p) for p in positions)) if positions else 0,
+            },
+            "combat": {
+                "engagement_count": len(engagements),
+                "total_engagement_ticks": total_engagement_ticks,
+                "engagement_pct": round(total_engagement_ticks / total * 100, 1) if total else 0,
+                "fire_rate_during_engagement": fire_rate,
+                "longest_engagement": max((e["ticks"] for e in engagements), default=0),
+                "engagements": engagements[:10],  # Top 10
+            },
+        }
+
+        if participant:
+            result["score"] = {
+                "kills": participant.kills,
+                "deaths": participant.deaths,
+                "elo_before": participant.elo_before,
+                "elo_after": participant.elo_after,
+            }
+
+        return result
+
+    def _match_insights(self, bot_analyses: list) -> list[str]:
+        """Generate human-readable insights from bot analyses."""
+        insights = []
+        for bot in bot_analyses:
+            name = bot.get("bot_name", "?")
+            combat = bot.get("combat", {})
+            movement = bot.get("movement", {})
+
+            if combat.get("engagement_pct", 0) < 5:
+                insights.append(f"{name} spent <5% of time in combat — likely can't find enemies (bad navigation or PVS issues)")
+            elif combat.get("fire_rate_during_engagement", 0) < 50:
+                insights.append(f"{name} only fired {combat['fire_rate_during_engagement']}% of the time when enemies were visible — strategy may have overly restrictive attack conditions")
+
+            if movement.get("stuck_pct", 0) > 20:
+                insights.append(f"{name} was stuck {movement['stuck_pct']}% of the time — needs better movement/unstuck logic")
+
+            if combat.get("engagement_count", 0) == 0:
+                insights.append(f"{name} never saw an enemy — server PVS may not be sending entity data, or bot is spawning in isolated area")
+
+        return insights

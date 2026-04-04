@@ -761,6 +761,70 @@ def get_match_telemetry_summary(
     }
 
 
+@app.get("/api/matches/{match_id}/analyze")
+def analyze_match(match_id: int):
+    """Deep analysis of a completed match from telemetry data."""
+    return telemetry_recorder.analyze_match(match_id)
+
+
+@app.get("/api/tournaments/{tournament_id}/analyze")
+def analyze_tournament(tournament_id: int, db: Session = Depends(get_db)):
+    """Analyze all matches in a tournament."""
+    tournament = db.query(TournamentDB).filter(TournamentDB.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    t_matches = (
+        db.query(TournamentMatchDB)
+        .filter(TournamentMatchDB.tournament_id == tournament_id)
+        .all()
+    )
+
+    analyses = []
+    for tm in t_matches:
+        if tm.game_match_id:
+            analysis = telemetry_recorder.analyze_match(tm.game_match_id)
+            if "error" not in analysis:
+                analysis["round"] = tm.round_num
+                analysis["match_num"] = tm.match_num
+                analyses.append(analysis)
+
+    # Aggregate insights across all matches
+    all_insights = []
+    bot_stats: dict[str, dict] = {}
+    for a in analyses:
+        all_insights.extend(a.get("match_insights", []))
+        for bot in a.get("bots", []):
+            name = bot["bot_name"]
+            if name not in bot_stats:
+                bot_stats[name] = {"matches": 0, "total_engagement_pct": 0, "total_fire_rate": 0, "total_stuck_pct": 0}
+            bot_stats[name]["matches"] += 1
+            bot_stats[name]["total_engagement_pct"] += bot.get("combat", {}).get("engagement_pct", 0)
+            bot_stats[name]["total_fire_rate"] += bot.get("combat", {}).get("fire_rate_during_engagement", 0)
+            bot_stats[name]["total_stuck_pct"] += bot.get("movement", {}).get("stuck_pct", 0)
+
+    # Average stats per bot
+    bot_averages = {}
+    for name, stats in bot_stats.items():
+        n = stats["matches"]
+        bot_averages[name] = {
+            "matches_played": n,
+            "avg_engagement_pct": round(stats["total_engagement_pct"] / n, 1),
+            "avg_fire_rate": round(stats["total_fire_rate"] / n, 1),
+            "avg_stuck_pct": round(stats["total_stuck_pct"] / n, 1),
+        }
+
+    return {
+        "tournament_id": tournament_id,
+        "tournament_name": tournament.name,
+        "status": tournament.status,
+        "matches_analyzed": len(analyses),
+        "match_analyses": analyses,
+        "bot_averages": bot_averages,
+        "insights": list(set(all_insights)),
+    }
+
+
 # ── Tournament Endpoints (Anti-Gravity — Batch 3) ──────────────
 
 @app.post("/api/tournaments", response_model=TournamentResponse)
